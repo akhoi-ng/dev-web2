@@ -30,6 +30,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "evidence"
+    "evidence",
+    "server.ts",
+    "server"
   ]
 }

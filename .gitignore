@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Temporary files left by the API's atomic write of data/students.json
+data/*.tmp

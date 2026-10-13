@@ -20,7 +20,7 @@ interface Props {
   route: Route;
   students: Student[];                 // the ONE list state, owned by App
   lastAddedId: string | null;
-  onAdd: (input: StudentInput) => string | null;
+  onAdd: (input: StudentInput) => Promise<string | null>;
   onDelete: (student: Student) => void;
 }
 
@@ -65,7 +65,7 @@ export default function StudentsPage({ route, students, lastAddedId, onAdd, onDe
           <div className="dialog pixel-box">
             <p className="dialog-tag">UniPortal · Pixel campus</p>
             <h1 id="page-title">Every student gets <em>their own character</em>.</h1>
-            <p className="hero-sub">Client-side rendering: the list lives in React state and every change happens without reloading the page.</p>
+            <p className="hero-sub">Client-side rendering: React builds this page, and every change is saved to the server without reloading the page.</p>
             <div className="hero-ctas">
               <button
                 className="btn btn-primary"
@@ -149,7 +149,7 @@ export default function StudentsPage({ route, students, lastAddedId, onAdd, onDe
               lastAddedId={lastAddedId}
               onDelete={onDelete}
             />
-            <p className="count">{filtered.length} of {students.length} record(s) · kept in React state (reload = back to seed data)</p>
+            <p className="count">{filtered.length} of {students.length} record(s) · served by the API (reload keeps your changes)</p>
           </section>
         </div>
       </div>

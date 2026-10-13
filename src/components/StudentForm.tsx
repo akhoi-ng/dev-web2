@@ -24,6 +24,8 @@ interface Props {
   /** compact = required fields first, optional fields folded away (used beside the list). */
   compact?: boolean;
   cancelHref?: string;
+  /** True while a save is in flight, so the button cannot be pressed twice. */
+  busy?: boolean;
   firstInputRef?: RefObject<HTMLInputElement | null>;
 }
 
@@ -31,7 +33,7 @@ interface Props {
 // It has NO state of its own: every <input> shows `values[...]` and every
 // keystroke calls onChange. This is what "controlled input" means.
 export default function StudentForm(props: Props) {
-  const { title, lede, values, onChange, onSubmit, error, submitLabel, idReadOnly, compact, cancelHref, firstInputRef } = props;
+  const { title, lede, values, onChange, onSubmit, error, submitLabel, idReadOnly, compact, cancelHref, busy, firstInputRef } = props;
   const errorRef = useRef<HTMLParagraphElement>(null);
 
   // Make sure the user sees the error even if the form was scrolled.
@@ -123,7 +125,7 @@ export default function StudentForm(props: Props) {
       ) : optional}
       <div className="row">
         {cancelHref && <a className="btn" href={cancelHref}>Cancel</a>}
-        <button className="btn btn-primary" type="submit">{submitLabel}</button>
+        <button className="btn btn-primary" type="submit" disabled={busy}>{submitLabel}</button>
       </div>
     </form>
   );
