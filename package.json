@@ -1,31 +1,22 @@
 {
   "name": "uniportal-react-csr",
   "private": true,
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "tsx watch server.ts",
-    "dev:web": "vite",
+    "dev": "vite",
     "build": "vite build",
-    "start": "tsx server.ts --prod",
-    "preview": "tsx server.ts --prod",
-    "lint": "tsc --noEmit && tsc -p tsconfig.server.json"
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "dotenv": "^18.0.7",
-    "express": "^5.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.6.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.0",
-    "concurrently": "^10.0.6",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.0.0"
   }

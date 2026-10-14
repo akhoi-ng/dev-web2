@@ -87,7 +87,8 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 1.35rem/1.4 v
 .card:hover .sprite { animation: dance .4s steps(2) infinite; }
 @keyframes dance { 25% { transform: translate(-4px, -6px); } 75% { transform: translate(4px, -6px); } }
 .card h3 { margin: 0; font: 700 1.7rem/1.1 var(--font-head); }
-.card-id { margin: 2px 0 10px; color: var(--muted); font-size: 1.15rem; }
+.card-id { margin: 2px 0 4px; color: var(--muted); font-size: 1.15rem; }
+.card-email { margin: 0 0 12px; color: var(--muted); font-size: 1.05rem; word-break: break-word; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 0 0 14px; padding: 0; list-style: none; }
 .chip { padding: .05rem .6rem; border: 2px solid var(--edge); background: var(--surface-2); font-size: 1.2rem; }
 .chip.honor { background: var(--success); color: #fff; }

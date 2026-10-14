@@ -3,24 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>UniPortal - University Management System</title>
-  <script>
-    // Apply the saved theme before React loads so the page does not flash.
-    (function () {
-      try {
-        var saved = localStorage.getItem("up-theme");
-        if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
-      } catch (e) {}
-    })();
-  </script>
+  <title>UniPortal - Student List (CSR)</title>
+  <link rel="icon" href="data:,">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Handjet:wght@400..800&family=VT323&display=swap">
-  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
   <link rel="stylesheet" href="/pixel.css">
 </head>
 <body>
-  <!-- HTML shell: this is ALL the HTML the server sends (check View Page Source).
+  <!-- HTML shell: this is ALL the HTML Vite sends (check View Page Source).
        React builds the whole page inside #root after the JS bundle runs. -->
   <div id="root"></div>
   <noscript>UniPortal needs JavaScript to render (client-side rendering).</noscript>

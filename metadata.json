@@ -1,6 +1,6 @@
 {
   "name": "UniPortal - University Management System",
-  "description": "University Management System, client-side rendered with React + Vite. The student list lives in React state (seeded from data/students.json): query filtering, add, modify and delete happen in the browser with no API, no database and no page reload.",
+  "description": "University Management System, client-side rendered with React + Vite. The student list lives in React state (seeded from src/seed.ts) and adding a student updates the UI in the browser with no API, no database and no page reload.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

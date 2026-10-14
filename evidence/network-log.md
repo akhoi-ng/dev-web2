@@ -1,67 +1,58 @@
 # Network log: before and after submit
 
 Recorded automatically with Chromium (Playwright) on the **production build**
-(`npm run build` + `npm start`, http://localhost:3100), 2026-10-13.
+(`npm run build` + `npm run preview`, http://localhost:4173).
 
 Requests made by the test machine's antivirus browser extension are excluded; they are
 not part of the app.
 
 ## 1. Before submit: first page load
 
-| # | Method | Type | Status | URL |
-|---|---|---|---|---|
-| 1 | GET | document | 200 | `/` |
-| 2 | GET | stylesheet | 200 | `/pixel.css` |
-| 3 | GET | script | 200 | `/assets/index-Cuoka0qx.js` |
-| 4 | GET | stylesheet | 200 | `https://fonts.googleapis.com/css2?family=Handjet:wght@400..800&family=VT323&display=swap` |
-| 5 | GET | stylesheet | 200 | `https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css` |
-| 6 | GET | fetch | 200 | `/api/students` |
-| 7-11 | GET | font | 200 | `fonts.gstatic.com`, `unpkg.com` (the icon font) |
+| Method | Type | Status | URL |
+|---|---|---|---|
+| GET | document | 200 | http://localhost:4173/ |
+| GET | stylesheet | 200 | http://localhost:4173/pixel.css |
+| GET | script | 200 | http://localhost:4173/assets/index-CxMWZUZ9.js |
+| GET | stylesheet | 200 | https://fonts.googleapis.com/css2?family=Handjet:wght@400..800&family=VT323&display=swap |
+| GET | font | 200 | https://fonts.gstatic.com/s/handjet/v23/oY108eXHq7n1OnbQrOY_2FrEwYEMLlcdP1mCtZaLaTutCwcIhGZelk3Fgt0.woff2 |
+| GET | font | 200 | https://fonts.gstatic.com/s/handjet/v23/oY108eXHq7n1OnbQrOY_2FrEwYEMLlcdP1mCtZaLaTutCwcIhGZel03Fgt0.woff2 |
+| GET | font | 200 | https://fonts.gstatic.com/s/handjet/v23/oY108eXHq7n1OnbQrOY_2FrEwYEMLlcdP1mCtZaLaTutCwcIhGZemE3F.woff2 |
+| GET | font | 200 | https://fonts.gstatic.com/s/vt323/v18/pxiKyp0ihIEF2isfFJU.woff2 |
 
 - Document requests: **1** (the HTML shell `/`).
+- App requests (origin http://localhost:4173): **3**. The rest are fonts from Google Fonts.
 - The page itself is **not** in the HTML: the shell only has `<div id="root">`.
-- The student data arrives as **JSON** from `GET /api/students`, and React renders
-  the cards from it.
-- Document navigations: **1**.
-- Cards rendered after load: **9**.
+- Cards rendered after load: **9** (the seed in `src/seed.ts`).
 
 ## 2. After submit: adding a student
 
-Filled the form (Full name "Network Log Test", ID `STU-2026-888`, email, major) and
+Filled the form (Full name "Đỗ Thị Ngọc Anh", ID `STU-2026-777`, email, major) and
 pressed **Add student**.
 
-| # | Method | Type | Status | URL |
-|---|---|---|---|---|
-| 1 | POST | fetch | 201 | `/api/students` |
+| Method | Type | Status | URL |
+|---|---|---|---|
+| GET | font | 200 | https://fonts.gstatic.com/s/vt323/v18/pxiKyp0ihIEF2isRFJXGdg.woff2 |
+| GET | font | 200 | https://fonts.gstatic.com/s/vt323/v18/pxiKyp0ihIEF2isQFJXGdg.woff2 |
 
-- Requests: **1**, and it is a JSON `fetch`, not a form post.
-- Document requests: **0**. Document navigations: **1** (still only the first load),
-  so the page was not reloaded.
-- Cards now: **10**. First card in the list: **Network Log Test** (marked "New").
-- Form after submit: Full name = "" (empty), suggested ID = `STU-2026-889`.
+
+- **App requests: 0.** There is no API, so the app sends nothing.
+- Document requests: **0**, so the page was not reloaded.
+- Cards now: **10**. First card in the list: **Đỗ Thị Ngọc Anh**.
+- Form after submit: Full name = "" (empty).
 
 ## 3. After pressing F5
 
 | | Cards |
 |---|---|
 | Before F5 | 10 |
-| After F5 | **10** |
+| After F5 | **9** |
 
-The page reloads the shell and the bundle, React calls `GET /api/students` again, and
-the extra student is still there because the server saved it to `data/students.json`.
+There is no server, so the new student is not kept. After F5 the list is back to the
+9 sample students from `src/seed.ts`. This is the expected behaviour
+for an in-memory client-side app.
 
-This is the difference from a plain in-memory CSR app, where F5 would go back to the
-original records.
+## Screenshots and recording
 
-## Note on development mode
-
-In `npm run dev`, React's `<StrictMode>` runs effects twice on purpose, so the first
-load shows two `GET /api/students` calls. That is a development-only behaviour; the
-production build above makes a single call. The second call is harmless because
-loading the list is read-only.
-
-## Screenshots
-
-`state-before-submit.png` and `state-after-submit.png` were taken for the earlier,
-API-less version. They must be re-taken: the wording under the list and the Network
-panel (which now shows the `POST`) have changed.
+- `state-before-submit.png`: the list with the seed students.
+- `state-after-submit.png`: the new student first, total is 10, form reset.
+- `demo.webm`: the same steps recorded.

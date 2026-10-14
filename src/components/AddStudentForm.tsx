@@ -1,67 +1,79 @@
-import { useEffect, useRef, useState } from 'react';
-import type { Student, StudentInput } from '../types';
-import { emptyInput, nextStudentId, toStudent } from '../studentUtils';
-import StudentForm from './StudentForm';
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import type { StudentInput } from '../types';
+import { emptyInput } from '../studentUtils';
 
 interface Props {
-  students: Student[];
-  /** Push the new student up to the state owner (App). Resolves to an error message, or null if it was added. */
-  onAdd: (input: StudentInput) => Promise<string | null>;
-  /** Scroll to the form and put the cursor in the first field (used by "+ Add" links). */
-  focus?: boolean;
+  /** Push the new student up to the state owner (App). Returns an error message, or null if it was added. */
+  onAdd: (input: StudentInput) => string | null;
 }
 
 // State owner of the FORM: what the user is typing lives here, not in App.
-// The LIST state lives only in App; this component just sends a new student up.
-export default function AddStudentForm({ students, onAdd, focus }: Props) {
-  const [values, setValues] = useState<StudentInput>(() => emptyInput(nextStudentId(students)));
+// Every input is CONTROLLED: it shows `values[...]` from state, and every
+// keystroke calls onChange, which updates that state.
+export default function AddStudentForm({ onAdd }: Props) {
+  const [values, setValues] = useState<StudentInput>(() => emptyInput(''));
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const submittingRef = useRef(false);
 
-  useEffect(() => {
-    if (!focus) return;
-    boxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    firstInputRef.current?.focus({ preventScroll: true });
-  }, [focus]);
-
-  const submit = async () => {
-    if (submittingRef.current) return; // ignore a second click while the first is saving
-    submittingRef.current = true;
-    setSaving(true);
-    try {
-      const err = await onAdd(values); // 1. send the new student to the owner
-      if (err) {
-        setError(err); // 2a. invalid: keep what the user typed and show the error
-        return;
-      }
-      setError(null);
-      // 2b. added: reset the form, with a fresh suggested ID.
-      // `values` is included because the `students` prop has not re-rendered yet.
-      setValues(emptyInput(nextStudentId([toStudent(values), ...students])));
-      firstInputRef.current?.focus();
-    } finally {
-      submittingRef.current = false;
-      setSaving(false);
-    }
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setValues((current) => ({ ...current, [e.target.name]: e.target.value }));
   };
 
-  return (
-    <div className="add-panel" id="add-student" ref={boxRef}>
-      <StudentForm
-        compact
-        title="Add new student"
-        lede="Saved on the server. No page reload."
-        values={values}
-        onChange={setValues}
-        onSubmit={() => void submit()}
-        error={error}
-        submitLabel="Add student"
-        busy={saving}
-        firstInputRef={firstInputRef}
+  const submit = (e: FormEvent) => {
+    e.preventDefault(); // stop the browser from sending the form and loading a new document
+
+    const err = onAdd(values); // 1. send the new student to the owner
+    if (err) {
+      setError(err); // 2a. invalid: keep what the user typed and show the error
+      setMessage(null);
+      return;
+    }
+    setError(null);
+    setValues(emptyInput('')); // 2b. added: reset the fields
+    setMessage('Student added to the list.');
+    firstInputRef.current?.focus();
+  };
+
+  const text = (
+    name: keyof StudentInput,
+    label: string,
+    opts: { placeholder?: string; type?: string; ref?: typeof firstInputRef } = {},
+  ) => (
+    <label className="field">
+      <span>{label} <b className="req">*</b></span>
+      <input
+        ref={opts.ref}
+        type={opts.type || 'text'}
+        name={name}
+        value={values[name] ?? ''}
+        onChange={handleChange}
+        placeholder={opts.placeholder}
       />
+    </label>
+  );
+
+  return (
+    <div className="add-panel" id="add-student">
+      <form className="form pixel-box compact" onSubmit={submit} noValidate>
+        <h2 className="form-title">Add new student</h2>
+        <p className="lede">Updates the list in the browser. No page reload.</p>
+        {error && <p className="error" role="alert">{error}</p>}
+        {message && <p className="flash" role="status">{message}</p>}
+        <div className="grid2">
+          {text('fullName', 'Full name', { placeholder: 'e.g. Maya Lin', ref: firstInputRef })}
+          {text('id', 'Student ID', { placeholder: 'e.g. STU-2026-401' })}
+          {text('email', 'Email', { type: 'email', placeholder: 'm.lin@university.edu' })}
+          {text('major', 'Major', { placeholder: 'e.g. Computer Science' })}
+          <label className="field">
+            <span>GPA (0–4) <b className="req">*</b></span>
+            <input type="number" step="0.01" min={0} max={4} name="gpa" value={values.gpa} onChange={handleChange} />
+          </label>
+        </div>
+        <div className="row">
+          <button className="btn btn-primary" type="submit">Add student</button>
+        </div>
+      </form>
     </div>
   );
 }
