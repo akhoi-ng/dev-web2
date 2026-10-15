@@ -30,9 +30,18 @@ export default function AddStudentForm({ onAdd }: Props) {
       return;
     }
     setError(null);
+    const newId = values.id.trim(); // capture before the fields are reset
     setValues(emptyInput('')); // 2b. added: reset the fields
     setMessage('Student added to the list.');
-    firstInputRef.current?.focus();
+    // 3. bring the new card into view: one scrollIntoView covers both a laptop
+    //    scrolled deep into the list and a phone where the form sits above it.
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-id="${CSS.escape(newId)}"]`)
+        ?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+    firstInputRef.current?.focus({ preventScroll: true });
   };
 
   const text = (

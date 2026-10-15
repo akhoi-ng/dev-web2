@@ -43,7 +43,7 @@ export function toStudent(input: StudentInput): Student {
     department: t(input.department) || 'General Studies',
     year: (input.year || 'Freshman') as Student['year'],
     enrollmentYear: parseInt(input.enrollmentYear, 10) || new Date().getFullYear(),
-    gpa: parseFloat(input.gpa) || 0,
+    gpa: (input.gpa ?? '').trim() === '' ? NaN : parseFloat(input.gpa),
     status: (input.status || 'Active') as Student['status'],
     credits: parseInt(input.credits, 10) || 0,
     advisor: t(input.advisor),
@@ -62,7 +62,7 @@ export function validateStudent(s: Student, others: Student[]): string | null {
     return 'Please fill in all required fields (ID, Full Name, Email, Major, GPA).';
   }
   if (!EMAIL_RE.test(s.email)) return 'Please enter a valid email address.';
-  if (s.gpa < 0 || s.gpa > 4) return 'GPA must be between 0 and 4.';
+  if (!Number.isFinite(s.gpa) || s.gpa < 0 || s.gpa > 4) return 'GPA must be between 0 and 4.';
   if (others.some((o) => o.id.toLowerCase() === s.id.toLowerCase())) {
     return `Student with ID "${s.id}" already exists. Please choose a unique ID.`;
   }

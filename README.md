@@ -194,9 +194,9 @@ Khi người dùng bấm **Add student**:
 
 1. `preventDefault()` chặn submit mặc định.
 2. `AddStudentForm` gọi `onAdd(values)`.
-3. `App.addStudent` kiểm tra trong trình duyệt (field bắt buộc, định dạng email, GPA từ 0 đến 4, ID duy nhất).
+3. `App.addStudent` kiểm tra trong trình duyệt (field bắt buộc, định dạng email, GPA bắt buộc và phải từ 0 đến 4, ID duy nhất). GPA để trống bị chặn trước khi chuyển kiểu, nên không bị âm thầm thành 0.00; GPA không phải số (chữ, `NaN`) cũng bị chặn.
 4. Nếu hợp lệ, `App` gọi `setStudents` và React render lại. Card mới ở đầu danh sách và thống kê tăng một.
-5. `AddStudentForm` reset các field và đưa con trỏ về "Full name".
+5. `AddStudentForm` reset các field, đưa con trỏ về "Full name", và cuộn card mới vào tầm nhìn (`scrollIntoView`) để thấy ngay.
 
 Nếu dữ liệu sai, state không đổi, lỗi hiện phía trên form, và nội dung người dùng đã gõ
 vẫn còn trong các ô nhập.
@@ -224,6 +224,7 @@ danh sách về seed.
 - Elements panel: thấy đầy đủ các card do React dựng.
 - Thêm một sinh viên hợp lệ: card mới xuất hiện đầu danh sách, tổng số tăng, form reset.
 - ID trùng hoặc dữ liệu sai: hiện thông báo lỗi, không thêm sinh viên.
+- GPA để trống: hiện lỗi field bắt buộc và **không** thêm sinh viên (không bị nhận với GPA 0.00). GPA nhập chữ hoặc ngoài khoảng 0–4 cũng bị từ chối.
 - Submit: không có document request và không có request tới server của ứng dụng, trang không reload.
 - F5: danh sách trở về 9 sinh viên mẫu.
 
@@ -275,16 +276,27 @@ không tạo document request và không có request nào tới server của ứ
 
 ```tsx
 const submit = (e: FormEvent) => {
-  e.preventDefault();      // 1. chặn trình duyệt load document mới
+  e.preventDefault(); // stop the browser from sending the form and loading a new document
 
-  const err = onAdd(values);   // 2. gửi sinh viên mới lên cho owner
+  const err = onAdd(values); // 1. send the new student to the owner
   if (err) {
-    setError(err);             // 3a. sai: giữ nội dung đã gõ, hiện lỗi
+    setError(err); // 2a. invalid: keep what the user typed and show the error
+    setMessage(null);
     return;
   }
   setError(null);
-  setValues(emptyInput(''));   // 3b. đã thêm: reset các field
-  firstInputRef.current?.focus();
+  const newId = values.id.trim(); // capture before the fields are reset
+  setValues(emptyInput('')); // 2b. added: reset the fields
+  setMessage('Student added to the list.');
+  // 3. bring the new card into view: one scrollIntoView covers both a laptop
+  //    scrolled deep into the list and a phone where the form sits above it.
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  requestAnimationFrame(() => {
+    document
+      .querySelector(`[data-id="${CSS.escape(newId)}"]`)
+      ?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  });
+  firstInputRef.current?.focus({ preventScroll: true });
 };
 ```
 
@@ -294,11 +306,19 @@ const submit = (e: FormEvent) => {
 const [students, setStudents] = useState<Student[]>(() => seedStudents.map((s) => ({ ...s })));
 
 const addStudent = (input: StudentInput): string | null => {
+  // GPA is required: an empty box would otherwise become 0.00 via parseFloat.
+  if (!input.gpa || !input.gpa.trim()) {
+    return 'Please fill in all required fields (ID, Full Name, Email, Major, GPA).';
+  }
+
   const student = toStudent(input);
   const error = validateStudent(student, students);
-  if (error) return error;                     // kiểm tra nhanh trong trình duyệt
+  if (error) return error;
 
-  setStudents((current) => [student, ...current]);  // mảng mới, sinh viên mới ở đầu
+  // New array with the new student first. A new array tells React to render
+  // again; students.push(...) would change the old array in place and React
+  // would not notice.
+  setStudents((current) => [student, ...current]);
   return null;
 };
 ```
@@ -318,9 +338,10 @@ Giải thích:
 
 - `useState<Student[]>(...)` tạo nguồn state duy nhất cho danh sách. Nó bắt đầu từ seed.
 - `submit` không tự sửa danh sách. Nó gửi giá trị form lên bằng `onAdd(values)`. Đây là kiểu "đẩy sinh viên mới lên cho owner".
-- `validateStudent` kiểm tra field bắt buộc, định dạng email, khoảng GPA và ID duy nhất trước khi thêm bất cứ thứ gì.
+- `validateStudent` kiểm tra field bắt buộc, định dạng email, khoảng GPA và ID duy nhất trước khi thêm bất cứ thứ gì. GPA để trống bị `addStudent` chặn trước khi `toStudent` chuyển kiểu (nên không bị thành `0.00`), và GPA không phải số bị `validateStudent` loại vì `Number.isFinite` sai.
 - `e.preventDefault()` chặn trình duyệt gửi form và load document mới. Đây là lý do không reload.
 - `setValues(emptyInput(''))` reset form, và vì các input là controlled nên các field trống lại ngay.
+- `scrollIntoView` cuộn card vừa thêm vào tầm nhìn, nên sinh viên mới "xuất hiện ngay" kể cả khi danh sách bị cuộn xa hoặc form nằm trên danh sách trên điện thoại.
 - `setStudents((current) => [student, ...current])` tạo một mảng **mới** với sinh viên mới ở đầu, báo cho React render lại.
 - React render lại danh sách. Vì mỗi card có `key={student.id}`, React giữ các card cũ và chỉ tạo một card mới trong DOM.
 

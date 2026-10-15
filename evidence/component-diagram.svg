@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="521" viewBox="0 0 1040 521" font-family="'Trebuchet MS','Segoe UI',Arial,sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L12,6 L0,12 z" fill="#1a1c2c"/>
+    </marker>
+  </defs>
+
+  <rect width="1040" height="521" fill="#e8edf4"/>
+
+  <text x="60" y="50" font-size="40" font-weight="700" fill="#1a1c2c">UniPortal · component diagram (CSR)</text>
+  <text x="60" y="80" font-size="20" fill="#404a63">Yellow boxes own state. White boxes have no state.</text>
+
+  <!-- legend samples with real line styles -->
+  <line x1="60" y1="108" x2="118" y2="108" stroke="#1a1c2c" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="128" y="114" font-size="19" fill="#404a63">Solid arrow = props down</text>
+  <line x1="400" y1="108" x2="458" y2="108" stroke="#1a1c2c" stroke-width="4" stroke-dasharray="9 7" marker-end="url(#arrow)"/>
+  <text x="468" y="114" font-size="19" fill="#404a63">Dashed arrow = callback up</text>
+
+  <!-- boxes (hard pixel shadow behind each) -->
+  <rect x="346" y="142" width="420" height="90" fill="#1a1c2c"/>
+  <rect x="340" y="136" width="420" height="90" fill="#ffcd75" stroke="#1a1c2c" stroke-width="6"/>
+  <text x="550" y="176" font-size="34" font-weight="700" fill="#1a1c2c" text-anchor="middle">App</text>
+  <text x="550" y="206" font-size="19" fill="#1a1c2c" text-anchor="middle">state owner · students: Student[]</text>
+
+  <rect x="211" y="276" width="300" height="86" fill="#1a1c2c"/>
+  <rect x="205" y="270" width="300" height="86" fill="#ffffff" stroke="#1a1c2c" stroke-width="6"/>
+  <text x="355" y="308" font-size="30" font-weight="700" fill="#1a1c2c" text-anchor="middle">StudentList</text>
+  <text x="355" y="336" font-size="19" fill="#404a63" text-anchor="middle">no state · map() to rows</text>
+
+  <rect x="601" y="276" width="300" height="86" fill="#1a1c2c"/>
+  <rect x="595" y="270" width="300" height="86" fill="#ffcd75" stroke="#1a1c2c" stroke-width="6"/>
+  <text x="745" y="308" font-size="30" font-weight="700" fill="#1a1c2c" text-anchor="middle">AddStudentForm</text>
+  <text x="745" y="336" font-size="16" fill="#1a1c2c" text-anchor="middle">state owner · values: StudentInput</text>
+
+  <rect x="211" y="426" width="300" height="80" fill="#1a1c2c"/>
+  <rect x="205" y="420" width="300" height="80" fill="#ffffff" stroke="#1a1c2c" stroke-width="6"/>
+  <text x="355" y="455" font-size="30" font-weight="700" fill="#1a1c2c" text-anchor="middle">StudentRow</text>
+  <text x="355" y="483" font-size="19" fill="#404a63" text-anchor="middle">no state</text>
+
+  <rect x="601" y="426" width="300" height="80" fill="#1a1c2c"/>
+  <rect x="595" y="420" width="300" height="80" fill="#ffffff" stroke="#1a1c2c" stroke-width="6"/>
+  <text x="745" y="455" font-size="26" font-weight="700" fill="#1a1c2c" text-anchor="middle">&lt;input&gt; / &lt;button&gt;</text>
+  <text x="745" y="483" font-size="19" fill="#404a63" text-anchor="middle">value + onChange</text>
+
+  <!-- arrows: solid = props down, dashed = callback up -->
+  <line x1="390" y1="226" x2="390" y2="266" stroke="#1a1c2c" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="650" y1="226" x2="650" y2="266" stroke="#1a1c2c" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="720" y1="266" x2="720" y2="226" stroke="#1a1c2c" stroke-width="4" stroke-dasharray="9 7" marker-end="url(#arrow)"/>
+  <line x1="355" y1="356" x2="355" y2="416" stroke="#1a1c2c" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="745" y1="356" x2="745" y2="416" stroke="#1a1c2c" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <!-- arrow labels -->
+  <text x="400" y="254" font-size="18" fill="#1a1c2c">props: students</text>
+  <text x="640" y="254" font-size="18" fill="#1a1c2c" text-anchor="end">props: onAdd</text>
+  <text x="732" y="254" font-size="18" fill="#1a1c2c">callback: onAdd(values)</text>
+  <text x="370" y="393" font-size="18" fill="#1a1c2c">props: student</text>
+  <text x="760" y="393" font-size="18" fill="#1a1c2c">controlled inputs</text>
+</svg>

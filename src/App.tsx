@@ -17,6 +17,11 @@ export default function App() {
 
   /** Called by AddStudentForm. Returns an error message, or null when the student was added. */
   const addStudent = (input: StudentInput): string | null => {
+    // GPA is required: an empty box would otherwise become 0.00 via parseFloat.
+    if (!input.gpa || !input.gpa.trim()) {
+      return 'Please fill in all required fields (ID, Full Name, Email, Major, GPA).';
+    }
+
     const student = toStudent(input);
     const error = validateStudent(student, students);
     if (error) return error;

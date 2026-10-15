@@ -64,7 +64,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 1.35rem/1.4 v
 .hero-ctas { display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* ---------- Stats ---------- */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 24px 0 0; padding: 0; list-style: none; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px 0 0; padding: 0; list-style: none; }
 .stat { padding: 14px; }
 .stat b { display: block; font: 700 2.2rem/1 var(--font-head); }
 .stat span { color: var(--muted); }
