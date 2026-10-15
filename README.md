@@ -140,7 +140,7 @@ Trang không load document mới sau lần tải đầu:
 
 - Hàm xử lý form gọi `e.preventDefault()`, nên trình duyệt không gửi form lên server.
 - `App` đưa bản ghi mới vào state, React thêm một card mới vào DOM. Các card cũ được giữ vì mỗi card có `key={student.id}`.
-- Không có request nào khi submit, vì không có gì nói chuyện với server.
+- Không có request nào tới server của ứng dụng khi submit, vì không có gì nói chuyện với server.
 
 ### Cập nhật state bất biến
 
@@ -163,7 +163,7 @@ React không nhận ra.
 | View Page Source | Nội dung đầy đủ | Chỉ có `<div id="root">` |
 | Tắt JavaScript | Trang vẫn chạy | Trang trắng |
 | Thêm sinh viên | Form POST, redirect, rồi tải một document HTML mới | `preventDefault`, rồi cập nhật state |
-| Request khi thêm | `POST` cộng redirect cộng `GET` (document mới) | Không có |
+| Request khi thêm | `POST` cộng redirect cộng `GET` (document mới) | Không có request tới server |
 | Nơi lưu danh sách | `data/students.json` trên server | React state, seed từ `src/seed.ts` |
 | Sau khi F5 | Dữ liệu mới vẫn còn | Trở về seed |
 
@@ -202,15 +202,15 @@ Nếu dữ liệu sai, state không đổi, lỗi hiện phía trên form, và n
 vẫn còn trong các ô nhập.
 
 **04. Trang không reload khi thêm sinh viên.**
-Không có document request và không có điều hướng khi submit. Xem minh chứng Network ở
-mục 10.
+Không có document request và không có điều hướng khi submit. Không có request nào tới
+server của ứng dụng. Xem minh chứng Network ở mục 10.
 
 ### Tiêu chí nghiệm thu (slide 14)
 
 | # | Tiêu chí | Cách kiểm tra | Kết quả |
 | --- | --- | --- | --- |
 | 01 | Sinh viên mới xuất hiện ngay sau khi submit | Sau submit, card mới ở đầu danh sách, tổng số tăng từ 9 lên 10 | Đạt |
-| 02 | Network không có document request mới | Submit không tạo request nào; `performance.getEntriesByType('navigation').length` vẫn là 1 | Đạt |
+| 02 | Network không có document request mới | Submit không tạo document request và không có request nào tới server của ứng dụng; `performance.getEntriesByType('navigation').length` vẫn là 1 | Đạt |
 | 03 | Form được reset sau khi thêm | Họ tên, email, ID và ngành trống lại, GPA về giá trị mặc định | Đạt |
 | 04 | Code chỉ có một nguồn state cho danh sách | Chỉ có `useState<Student[]>` trong `App.tsx`; thống kê đọc từ đó | Đạt |
 
@@ -224,7 +224,7 @@ danh sách về seed.
 - Elements panel: thấy đầy đủ các card do React dựng.
 - Thêm một sinh viên hợp lệ: card mới xuất hiện đầu danh sách, tổng số tăng, form reset.
 - ID trùng hoặc dữ liệu sai: hiện thông báo lỗi, không thêm sinh viên.
-- Submit: không có request mới, trang không reload.
+- Submit: không có document request và không có request tới server của ứng dụng, trang không reload.
 - F5: danh sách trở về 9 sinh viên mẫu.
 
 ## 10. Minh chứng
@@ -252,16 +252,20 @@ state của form (`values`). Mũi tên liền là props đi xuống, mũi tên �
 1. Mở `http://localhost:5173/`. Thấy 9 sinh viên.
 2. Xóa log trong tab Network.
 3. Nhập Full name, ID, Email, Major và GPA, rồi bấm **Add student**.
-4. Cho thấy không có request mới, card mới ở đầu danh sách, tổng số là 10, và form trống.
+4. Cho thấy không có document request và không có request nào tới server của ứng dụng, card mới ở đầu danh sách, tổng số là 10, và form trống.
 
 ### 03. Network trước và sau submit
 
 Log đầy đủ ở `evidence/network-log.md`. Tóm tắt:
 
-| | Document request | Request khác |
-| --- | --- | --- |
-| Lần tải trang đầu | 1 (`/`) | `pixel.css`, JS bundle và font |
-| Sau submit | 0 | 0 |
+| | Document request | Request tới app | Request khác |
+| --- | --- | --- | --- |
+| Lần tải trang đầu | 1 (`/`) | `pixel.css`, JS bundle | Font từ Google Fonts |
+| Sau submit | 0 | 0 | 2 font từ Google Fonts |
+
+Hai request font ở bước sau submit là do trình duyệt tải thêm ký tự của font VT323 từ
+Google Fonts, không phải request của ứng dụng. Vì vậy điểm cần chứng minh vẫn đúng: submit
+không tạo document request và không có request nào tới server của ứng dụng.
 
 ## 11. Đoạn code do AI sinh cần giải thích
 
@@ -334,6 +338,6 @@ lại, vì thống kê suy ra từ cùng state và không tốn thêm gì.
 | Render danh sách sinh viên từ state | Đạt |
 | Form Add Student dùng controlled inputs | Đạt |
 | Submit cập nhật UI ở client | Đạt |
-| Không reload khi thêm sinh viên | Đạt (không có request nào) |
+| Không reload khi thêm sinh viên | Đạt (không có document request và không có request tới server của ứng dụng) |
 | Tiêu chí nghiệm thu 01 đến 04 | Đạt hết |
 | Minh chứng | Sơ đồ, network log, ảnh chụp và video |

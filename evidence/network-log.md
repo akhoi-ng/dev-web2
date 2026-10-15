@@ -55,4 +55,4 @@ for an in-memory client-side app.
 
 - `state-before-submit.png`: the list with the seed students.
 - `state-after-submit.png`: the new student first, total is 10, form reset.
-- `demo.webm`: the same steps recorded.
+- `demo.webm`: real screen recording on the computer with DevTools open on the Network tab (demonstrating no page reload and no new app requests after submit).
