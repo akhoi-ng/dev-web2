@@ -11,8 +11,9 @@
   <link rel="stylesheet" href="/pixel.css">
 </head>
 <body>
-  <!-- HTML shell: this is ALL the HTML Vite sends (check View Page Source).
-       React builds the whole page inside #root after the JS bundle runs. -->
+  <!-- HTML shell: this is ALL the HTML the frontend server sends (check View Page Source).
+       React builds the whole page inside #root after the JS bundle runs,
+       then asks the backend API (GET /api/students) for the list. -->
   <div id="root"></div>
   <noscript>UniPortal needs JavaScript to render (client-side rendering).</noscript>
   <script type="module" src="/src/main.tsx"></script>

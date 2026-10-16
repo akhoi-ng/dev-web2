@@ -1,23 +1,19 @@
 {
-  "name": "uniportal-react-csr",
+  "name": "uniportal-csr",
   "private": true,
-  "version": "3.0.0",
-  "type": "module",
+  "version": "5.0.0",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "tsc --noEmit"
-  },
-  "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "dev": "concurrently -n BE,FE -c blue,green \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend",
+    "start": "concurrently -n BE,FE -c blue,green \"npm start -w backend\" \"npm run preview -w frontend\"",
+    "lint": "npm run lint -w backend && npm run lint -w frontend",
+    "reset-data": "npm run reset-data -w backend"
   },
   "devDependencies": {
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
-    "@vitejs/plugin-react": "^6.0.0",
-    "typescript": "^7.0.2",
-    "vite": "^8.0.0"
+    "concurrently": "^10.0.6"
   }
 }

@@ -1,58 +1,53 @@
-# Network log: before and after submit
+# Network log: tải trang, submit và F5
 
-Recorded automatically with Chromium (Playwright) on the **production build**
-(`npm run build` + `npm run preview`, http://localhost:4173).
+Ghi tự động bằng Chromium (Playwright) trên **bản production**: `npm run build` rồi `npm start`.
+`npm start` chạy hai server: **frontend** (Vite preview, `http://localhost:4173`) và **backend** (Express API, `http://localhost:3000`).
+Trình duyệt chỉ nói chuyện với frontend; frontend chuyển (proxy) mọi request `/api/...` sang backend.
+Vì vậy trong tab Network, request API vẫn có địa chỉ `http://localhost:4173/api/students`.
 
-Requests made by the test machine's antivirus browser extension are excluded; they are
-not part of the app.
+Bảng chỉ liệt kê request tới ứng dụng (`http://localhost:4173`). Request font tới Google Fonts không được
+liệt kê vì máy test không truy cập được Google Fonts; đó không phải request của ứng dụng.
 
-## 1. Before submit: first page load
-
-| Method | Type | Status | URL |
-|---|---|---|---|
-| GET | document | 200 | http://localhost:4173/ |
-| GET | stylesheet | 200 | http://localhost:4173/pixel.css |
-| GET | script | 200 | http://localhost:4173/assets/index-CxMWZUZ9.js |
-| GET | stylesheet | 200 | https://fonts.googleapis.com/css2?family=Handjet:wght@400..800&family=VT323&display=swap |
-| GET | font | 200 | https://fonts.gstatic.com/s/handjet/v23/oY108eXHq7n1OnbQrOY_2FrEwYEMLlcdP1mCtZaLaTutCwcIhGZelk3Fgt0.woff2 |
-| GET | font | 200 | https://fonts.gstatic.com/s/handjet/v23/oY108eXHq7n1OnbQrOY_2FrEwYEMLlcdP1mCtZaLaTutCwcIhGZel03Fgt0.woff2 |
-| GET | font | 200 | https://fonts.gstatic.com/s/handjet/v23/oY108eXHq7n1OnbQrOY_2FrEwYEMLlcdP1mCtZaLaTutCwcIhGZemE3F.woff2 |
-| GET | font | 200 | https://fonts.gstatic.com/s/vt323/v18/pxiKyp0ihIEF2isfFJU.woff2 |
-
-- Document requests: **1** (the HTML shell `/`).
-- App requests (origin http://localhost:4173): **3**. The rest are fonts from Google Fonts.
-- The page itself is **not** in the HTML: the shell only has `<div id="root">`.
-- Cards rendered after load: **9** (the seed in `src/seed.ts`).
-
-## 2. After submit: adding a student
-
-Filled the form (Full name "Đỗ Thị Ngọc Anh", ID `STU-2026-777`, email, major) and
-pressed **Add student**.
+## 1. Lần tải trang đầu
 
 | Method | Type | Status | URL |
 |---|---|---|---|
-| GET | font | 200 | https://fonts.gstatic.com/s/vt323/v18/pxiKyp0ihIEF2isRFJXGdg.woff2 |
-| GET | font | 200 | https://fonts.gstatic.com/s/vt323/v18/pxiKyp0ihIEF2isQFJXGdg.woff2 |
+| GET | document | 200 | `/` |
+| GET | stylesheet | 200 | `/pixel.css` |
+| GET | script | 200 | `/assets/index-BLmN9gbm.js` |
+| GET | fetch | 200 | `/api/students` |
 
+- Document request: **1** (HTML shell `/`, chỉ có `<div id="root">`).
+- `/assets/index-BLmN9gbm.js` là JS bundle. React chạy xong mới gọi **`GET /api/students`** (type `fetch`).
+- Backend: Router `/api/students` → Handler `listStudents` → Database (đọc `backend/data/students.json`) → `res.json()`.
+- Số card sau khi tải: **9**.
 
-- **App requests: 0.** There is no API, so the app sends nothing.
-- Document requests: **0**, so the page was not reloaded.
-- Cards now: **10**. First card in the list: **Đỗ Thị Ngọc Anh**.
-- Form after submit: Full name = "" (empty).
+## 2. Sau khi submit (thêm một sinh viên)
 
-## 3. After pressing F5
+Nhập Full name "Đỗ Thị Ngọc Anh", ID `STU-2026-111`, email, major, rồi bấm **Add student**.
 
-| | Cards |
-|---|---|
-| Before F5 | 10 |
-| After F5 | **9** |
+| Method | Type | Status | URL |
+|---|---|---|---|
+| POST | fetch | 201 | `/api/students` |
 
-There is no server, so the new student is not kept. After F5 the list is back to the
-9 sample students from `src/seed.ts`. This is the expected behaviour
-for an in-memory client-side app.
+- Request tới ứng dụng: **1**, kiểu `fetch` (`POST /api/students`, trả `201` kèm JSON sinh viên đã lưu). Document request: **0**.
+- Backend: Router → Handler `createStudent` (validate) → Database (ghi vào file) → `res.status(201).json(...)`.
+- Frontend: nhận JSON → `setStudents` → component render lại → DOM có thêm một card.
+- `performance.getEntriesByType('navigation').length` = **1**: trang không load lại.
+- Số card: **10**. Card đầu tiên: **Đỗ Thị Ngọc Anh**. Thông báo trong form: "Student saved on the server and added to the list."
+- Form sau khi submit: Full name = "" (đã reset).
+- Số sinh viên trong `backend/data/students.json` sau khi submit: **10**.
 
-## Screenshots and recording
+## 3. Sau khi nhấn F5
 
-- `state-before-submit.png`: the list with the seed students.
-- `state-after-submit.png`: the new student first, total is 10, form reset.
-- `demo.webm`: real screen recording on the computer with DevTools open on the Network tab (demonstrating no page reload and no new app requests after submit).
+| Method | Type | Status | URL |
+|---|---|---|---|
+| GET | document | 200 | `/` |
+| GET | stylesheet | 304 | `/pixel.css` |
+| GET | script | 304 | `/assets/index-BLmN9gbm.js` |
+| GET | fetch | 200 | `/api/students` |
+
+- F5 tải lại HTML shell, JS bundle, và React lại gọi `GET /api/students`.
+- Số card sau F5: **10**. Card đầu tiên: **Đỗ Thị Ngọc Anh**. Sinh viên vừa thêm vẫn còn, vì backend đã ghi vào file.
+
+Sau khi ghi log, dữ liệu được trả về 9 sinh viên ban đầu bằng `npm run reset-data`.

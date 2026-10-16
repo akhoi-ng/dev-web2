@@ -68,3 +68,24 @@ export function validateStudent(s: Student, others: Student[]): string | null {
   }
   return null;
 }
+
+/**
+ * Client-side check before sending POST /api/students: quick feedback, no request
+ * for data that is clearly wrong. The backend checks everything again (it must).
+ * Returns the cleaned Student, or an error. `duplicate` is true when the ID is taken.
+ */
+export function checkNewStudent(
+  input: StudentInput,
+  others: Student[],
+): { student: Student; error: null; duplicate: false } | { student: null; error: string; duplicate: boolean } {
+  // GPA is required: an empty box would otherwise become 0.00 via parseFloat.
+  if (!input.gpa || !input.gpa.trim()) {
+    return { student: null, error: 'Please fill in all required fields (ID, Full Name, Email, Major, GPA).', duplicate: false };
+  }
+  const student = toStudent(input);
+  const fieldError = validateStudent(student, []);
+  if (fieldError) return { student: null, error: fieldError, duplicate: false };
+  const idError = validateStudent(student, others);
+  if (idError) return { student: null, error: idError, duplicate: true };
+  return { student, error: null, duplicate: false };
+}

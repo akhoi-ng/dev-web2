@@ -1,6 +1,6 @@
 {
   "name": "UniPortal - University Management System",
-  "description": "University Management System, client-side rendered with React + Vite. The student list lives in React state (seeded from src/seed.ts) and adding a student updates the UI in the browser with no API, no database and no page reload.",
+  "description": "University Management System split into a backend and a frontend. Backend (backend/): Express API with Router, Handler and Database layers over backend/data/students.json (GET and POST /api/students). Frontend (frontend/): React + Vite client-side rendering: fetch() -> state -> components -> DOM, with no page reload.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
