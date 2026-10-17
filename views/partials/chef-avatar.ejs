@@ -1,0 +1,9 @@
+<%
+  // Biến nhận vào: chef, size (class Tailwind cho kích thước), textSize
+  const initial = (chef.name || "?").trim().split(/\s+/).pop().charAt(0).toUpperCase();
+%>
+<% if (chef.imageUrl) { %>
+  <img src="<%= chef.imageUrl %>" alt="<%= chef.name %>" class="<%= size %> flex-none rounded-full object-cover ring-2 ring-white">
+<% } else { %>
+  <span class="<%= size %> <%= locals.textSize || 'text-base' %> flex flex-none items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700 ring-2 ring-white"><%= initial %></span>
+<% } %>

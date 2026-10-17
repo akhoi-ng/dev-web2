@@ -1,0 +1,16 @@
+<%- include("../../partials/header") %>
+
+<div class="mx-auto max-w-2xl">
+  <%- include("../../partials/page-heading", {
+    heading: "Thêm nguyên liệu mới",
+    back: { href: "/admin/ingredients", label: "Danh sách nguyên liệu" }
+  }) %>
+
+  <%- include("_form", {
+    action: "/admin/ingredients",
+    submitLabel: "Thêm nguyên liệu",
+    cancelHref: "/admin/ingredients"
+  }) %>
+</div>
+
+<%- include("../../partials/footer") %>

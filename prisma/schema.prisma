@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Dish {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  price       Int
+  category    String?
+  imageUrl    String?
+  available   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Đầu bếp phụ trách (nhiều món - một đầu bếp). Xóa đầu bếp thì món còn lại, chefId = null.
+  chefId      Int?
+  chef        Chef?            @relation(fields: [chefId], references: [id], onDelete: SetNull)
+  // Công thức: các nguyên liệu và định lượng (nhiều - nhiều qua bảng dish_ingredients)
+  ingredients DishIngredient[]
+
+  @@map("dishes")
+}
+
+model Chef {
+  id        Int      @id @default(autoincrement())
+  name      String
+  specialty String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  dishes Dish[]
+
+  @@map("chefs")
+}
+
+model Ingredient {
+  id        Int      @id @default(autoincrement())
+  name      String
+  unit      String
+  createdAt DateTime @default(now())
+
+  dishes DishIngredient[]
+
+  @@map("ingredients")
+}
+
+// Yêu cầu đặt bàn của khách. `code` là mã ngẫu nhiên để khách xem lại yêu cầu của mình
+// (không dùng id trong URL, vì id tăng dần ai cũng đoán được).
+model Booking {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  phone     String
+  guests    Int
+  bookedAt  DateTime
+  note      String?
+  status    String   @default("pending") // pending | confirmed | cancelled
+  createdAt DateTime @default(now())
+
+  @@index([bookedAt])
+  @@map("bookings")
+}
+
+// Bảng nối Dish <-> Ingredient, lưu thêm định lượng cho mỗi phần ăn (theo đơn vị của nguyên liệu)
+model DishIngredient {
+  dishId       Int
+  ingredientId Int
+  quantity     Float
+
+  dish       Dish       @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@id([dishId, ingredientId])
+  @@index([ingredientId])
+  @@map("dish_ingredients")
+}

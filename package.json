@@ -1,19 +1,26 @@
 {
-  "name": "uniportal-csr",
-  "private": true,
-  "version": "5.0.0",
-  "workspaces": [
-    "backend",
-    "frontend"
-  ],
+  "name": "restaurant-manager",
+  "version": "1.0.0",
+  "description": "Quản lý Nhà hàng - Express + EJS + Prisma (SSR)",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "concurrently -n BE,FE -c blue,green \"npm run dev -w backend\" \"npm run dev -w frontend\"",
-    "build": "npm run build -w frontend",
-    "start": "concurrently -n BE,FE -c blue,green \"npm start -w backend\" \"npm run preview -w frontend\"",
-    "lint": "npm run lint -w backend && npm run lint -w frontend",
-    "reset-data": "npm run reset-data -w backend"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.0",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "method-override": "^3.0.0"
   },
   "devDependencies": {
-    "concurrently": "^10.0.6"
+    "prisma": "^6.16.0"
   }
 }

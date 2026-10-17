@@ -1,6 +1,0 @@
-{
-  "name": "UniPortal - University Management System",
-  "description": "University Management System split into a backend and a frontend. Backend (backend/): Express API with Router, Handler and Database layers over backend/data/students.json (GET and POST /api/students). Frontend (frontend/): React + Vite client-side rendering: fetch() -> state -> components -> DOM, with no page reload.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
-}

@@ -1,0 +1,17 @@
+<%- include("../../partials/header") %>
+
+<div class="mx-auto max-w-2xl">
+  <%- include("../../partials/page-heading", {
+    heading: "Sửa nguyên liệu #" + ingredient.id,
+    subheading: ingredient.name,
+    back: { href: "/admin/ingredients/" + ingredient.id, label: "Chi tiết nguyên liệu" }
+  }) %>
+
+  <%- include("_form", {
+    action: "/admin/ingredients/" + ingredient.id + "?_method=PATCH",
+    submitLabel: "Lưu thay đổi",
+    cancelHref: "/admin/ingredients/" + ingredient.id
+  }) %>
+</div>
+
+<%- include("../../partials/footer") %>

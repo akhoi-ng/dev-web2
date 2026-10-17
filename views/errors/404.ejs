@@ -1,0 +1,13 @@
+<%- include("../partials/header", { title: "Không tìm thấy" }) %>
+
+<div class="mx-auto max-w-lg py-16 text-center">
+  <p class="text-7xl font-extrabold text-brand-600">404</p>
+  <h1 class="mt-4 text-2xl font-bold">Không tìm thấy trang</h1>
+  <p class="mt-2 text-stone-500">Trang hoặc bản ghi bạn tìm không tồn tại, có thể đã bị xóa hoặc đường dẫn không đúng.</p>
+  <div class="mt-8 flex flex-wrap justify-center gap-3">
+    <a href="/dishes" class="rounded-xl bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700">Về thực đơn</a>
+    <a href="/admin/dishes" class="rounded-xl border border-stone-300 bg-white px-5 py-3 font-semibold hover:bg-stone-100">Về trang quản trị</a>
+  </div>
+</div>
+
+<%- include("../partials/footer") %>

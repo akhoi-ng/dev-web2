@@ -1,0 +1,81 @@
+<%- include("../partials/header") %>
+
+<nav aria-label="Vị trí trang" class="mb-6 flex flex-wrap gap-2 text-sm text-stone-500">
+  <a href="/dishes#thuc-don" class="hover:text-brand-700">Thực đơn</a>
+  <% if (dish.category) { %>
+    <span aria-hidden="true">/</span>
+    <a href="/dishes?category=<%= encodeURIComponent(dish.category) %>#thuc-don" class="hover:text-brand-700"><%= dish.category %></a>
+  <% } %>
+  <span aria-hidden="true">/</span>
+  <span aria-current="page" class="font-semibold text-ink"><%= dish.name %></span>
+</nav>
+
+<article class="flex flex-wrap items-start gap-10">
+  <div class="min-w-0 flex-[1_1_480px]">
+    <div class="aspect-[4/3] overflow-hidden rounded-3xl bg-brand-50">
+      <img src="<%= dish.imageUrl || DEFAULT_DISH_IMAGE %>" alt="<%= dish.name %>"
+           onerror="this.onerror=null;this.src='<%= DEFAULT_DISH_IMAGE %>'"
+           class="h-full w-full object-cover <%= dish.available ? '' : 'grayscale' %>">
+    </div>
+  </div>
+
+  <div class="flex min-w-0 flex-[1_1_400px] flex-col gap-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <% if (dish.category) { %>
+        <span class="rounded-full bg-brand-100 px-3 py-1 text-xs font-bold text-brand-800"><%= dish.category %></span>
+      <% } %>
+      <% if (dish.available) { %>
+        <span class="rounded-full bg-[#E3EFE7] px-3 py-1 text-xs font-bold text-[#1E5233]">Còn món</span>
+      <% } else { %>
+        <span class="rounded-full bg-ink px-3 py-1 text-xs font-bold text-white">Tạm hết món</span>
+      <% } %>
+    </div>
+
+    <h1 class="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl"><%= dish.name %></h1>
+    <p class="text-3xl font-extrabold text-brand-700"><%= formatPrice(dish.price) %></p>
+    <p class="text-lg leading-relaxed text-stone-700"><%= dish.description || "Chưa có mô tả cho món ăn này." %></p>
+
+    <% if (dish.chef) { %>
+      <div class="flex items-center gap-3.5 rounded-2xl border border-[#EADBD2] bg-white p-4">
+        <%- include("../partials/chef-avatar", { chef: dish.chef, size: "h-[52px] w-[52px]", textSize: "text-lg" }) %>
+        <div class="flex flex-col">
+          <span class="text-sm text-stone-500">Đầu bếp phụ trách</span>
+          <span class="text-lg font-bold"><%= dish.chef.name %></span>
+          <span class="text-sm text-stone-500"><%= dish.chef.specialty %></span>
+        </div>
+      </div>
+    <% } %>
+
+    <div class="flex flex-wrap gap-3">
+      <a href="/bookings/new" class="flex min-h-12 flex-[1_1_200px] items-center justify-center rounded-2xl bg-brand-600 px-5 font-bold text-white hover:bg-brand-700">Đặt bàn để thưởng thức</a>
+      <a href="/dishes#thuc-don" class="flex min-h-12 flex-[1_1_160px] items-center justify-center rounded-2xl border border-[#D9C3B7] bg-white px-5 font-bold hover:bg-brand-50">← Quay lại thực đơn</a>
+    </div>
+  </div>
+</article>
+
+<% if (dish.ingredients.length > 0) { %>
+  <section class="mt-12 max-w-3xl rounded-3xl border border-[#EADBD2] bg-white p-7">
+    <h2 class="text-xl font-extrabold">Thành phần cho 1 phần ăn</h2>
+    <p class="mb-4 mt-1 text-sm text-stone-500">Định lượng theo đơn vị của từng nguyên liệu.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left">
+        <thead>
+          <tr class="border-b border-[#EADBD2] text-sm text-stone-500">
+            <th scope="col" class="py-2.5 font-semibold">Nguyên liệu</th>
+            <th scope="col" class="py-2.5 text-right font-semibold">Định lượng</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% dish.ingredients.forEach(function (di) { %>
+            <tr class="border-b border-[#F3E8E1] last:border-0">
+              <td class="py-3.5"><%= di.ingredient.name %></td>
+              <td class="py-3.5 text-right font-semibold"><%= formatQty(di.quantity) %> <%= di.ingredient.unit %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } %>
+
+<%- include("../partials/footer") %>

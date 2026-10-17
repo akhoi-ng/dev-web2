@@ -1,0 +1,61 @@
+  </main>
+
+  <%
+    // Footer: điện thoại 2 cột (logo và Liên hệ chiếm cả hàng), desktop 4 cột với cột logo rộng hơn
+    const footLink = "flex min-h-10 items-center hover:text-white";
+    const heading = "mb-2 text-sm font-bold uppercase tracking-wider text-white";
+  %>
+  <footer class="bg-ink text-[#E9DCD5]">
+    <div class="mx-auto grid max-w-6xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-12 lg:grid-cols-[1.5fr_1fr_1fr_1.4fr] lg:gap-x-10">
+      <div class="col-span-2 flex flex-col gap-4 lg:col-span-1">
+        <a href="/dishes" class="flex items-center gap-2.5 self-start" aria-label="<%= RESTAURANT.name %> – về thực đơn">
+          <%- include("logo", { size: 40 }) %>
+          <span class="flex flex-col leading-tight">
+            <span class="text-xl font-extrabold text-white"><%= RESTAURANT.name %></span>
+            <span class="text-xs"><%= RESTAURANT.tagline %></span>
+          </span>
+        </a>
+        <p class="max-w-xs text-sm leading-relaxed">Bếp Việt &amp; Âu cho bữa ăn gia đình và bạn bè.</p>
+        <a href="/bookings/new" class="flex min-h-11 items-center self-start rounded-full bg-brand-600 px-5 text-sm font-bold text-white hover:bg-brand-700">Đặt bàn</a>
+      </div>
+
+      <nav aria-labelledby="footer-menu" class="flex flex-col text-sm">
+        <h2 id="footer-menu" class="<%= heading %>">Thực đơn</h2>
+        <% ["Khai vị", "Món chính", "Món phụ", "Tráng miệng", "Đồ uống"].forEach(function (c) { %>
+          <a href="/dishes?category=<%= encodeURIComponent(c) %>#thuc-don" class="<%= footLink %>"><%= c %></a>
+        <% }) %>
+      </nav>
+
+      <nav aria-labelledby="footer-help" class="flex flex-col text-sm">
+        <h2 id="footer-help" class="<%= heading %>">Hỗ trợ</h2>
+        <a href="/bookings/new" class="<%= footLink %>">Đặt bàn</a>
+        <a href="/about" class="<%= footLink %>">Về chúng tôi</a>
+        <a href="/admin/dishes" class="<%= footLink %>">Trang quản trị</a>
+      </nav>
+
+      <div class="col-span-2 flex flex-col gap-3 text-sm lg:col-span-1">
+        <h2 class="<%= heading %>">Liên hệ</h2>
+        <span class="flex items-start gap-3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F4B13E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="mt-0.5 flex-none"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+          <span><%= RESTAURANT.address %></span>
+        </span>
+        <a href="tel:<%= RESTAURANT.phone %>" class="flex items-center gap-3 self-start hover:text-white">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F4B13E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"></path></svg>
+          <span class="text-base font-bold text-white"><%= formatPhone(RESTAURANT.phone) %></span>
+        </a>
+        <span class="flex items-center gap-3">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F4B13E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+          <span>Mở cửa <%= RESTAURANT.hours %> mỗi ngày</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="border-t border-[#4A3631]">
+      <div class="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-5 text-xs sm:flex-row sm:items-center sm:justify-between">
+        <span>© <%= new Date().getFullYear() %> <%= RESTAURANT.name %>. Bảo lưu mọi quyền.</span>
+        <span class="text-[#B8A69E]">Express · EJS · Prisma · PostgreSQL</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

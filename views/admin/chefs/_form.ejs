@@ -1,0 +1,28 @@
+<%
+  // Biến nhận vào: action, values, errors, submitLabel, cancelHref
+  const input = "mt-1 w-full rounded-xl border border-stone-300 px-4 py-2.5 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200";
+%>
+<%- include("../../partials/form-errors", { errors }) %>
+
+<form method="POST" action="<%= action %>" class="space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8">
+  <div>
+    <label for="name" class="text-sm font-semibold">Họ tên đầu bếp <span class="text-red-500">*</span></label>
+    <input id="name" name="name" type="text" value="<%= values.name %>" maxlength="100" class="<%= input %>" placeholder="VD: Nguyễn Văn Minh">
+  </div>
+
+  <div>
+    <label for="specialty" class="text-sm font-semibold">Chuyên môn <span class="text-red-500">*</span></label>
+    <input id="specialty" name="specialty" type="text" value="<%= values.specialty %>" maxlength="150" class="<%= input %>" placeholder="VD: Bếp trưởng món Á">
+  </div>
+
+  <div>
+    <label for="imageUrl" class="text-sm font-semibold">URL ảnh đại diện</label>
+    <input id="imageUrl" name="imageUrl" type="text" value="<%= values.imageUrl %>" class="<%= input %>" placeholder="https://images.unsplash.com/...">
+    <p class="mt-1 text-xs text-stone-500">Để trống sẽ hiển thị chữ cái đầu của tên.</p>
+  </div>
+
+  <div class="flex flex-wrap gap-3 border-t border-stone-100 pt-5">
+    <button type="submit" class="rounded-xl bg-brand-600 px-6 py-2.5 font-semibold text-white hover:bg-brand-700"><%= submitLabel %></button>
+    <a href="<%= cancelHref %>" class="rounded-xl border border-stone-300 px-6 py-2.5 font-semibold hover:bg-stone-100">Hủy</a>
+  </div>
+</form>
