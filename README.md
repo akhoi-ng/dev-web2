@@ -762,8 +762,6 @@ curl -i -X POST "http://localhost:3000/admin/dishes" -d "name=Com tam&price=5000
 
 ## 15. Minh chứng
 
-Nhóm cần chụp và lưu vào `evidence/` trước khi nộp:
-
 | File | Nội dung |
 | --- | --- |
 | `evidence/supabase-tables.png` | Table Editor của Supabase sau `db push` và seed |
@@ -771,8 +769,6 @@ Nhóm cần chụp và lưu vào `evidence/` trước khi nộp:
 | `evidence/network-delete.png` | `POST ...?_method=DELETE` → `303` → `GET /admin/dishes` |
 | `evidence/validation-400.png` | Form với khung lỗi đỏ và giá trị còn giữ |
 | `evidence/demo.webm` | Video thao tác theo các bước ở mục 14 |
-
-Thư mục `evidence/` hiện **chưa có**.
 
 ## 16. Đoạn code chính cần giải thích
 
