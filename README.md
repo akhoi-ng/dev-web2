@@ -195,11 +195,15 @@ views/                          # TEMPLATE: chỉ quyết định dữ liệu tr
 ├── dishes/
 │   ├── index.ejs               # trang chủ + thực đơn: tìm kiếm, ô danh mục, lọc, sắp xếp, phân trang, đặt bàn
 │   └── show.ejs                # chi tiết món: đầu bếp, công thức
+├── bookings/
+│   ├── new.ejs                 # form đặt bàn
+│   └── show.ejs                # xác nhận mã đặt bàn + trạng thái
 ├── about.ejs                   # Về chúng tôi
 ├── admin/
 │   ├── dishes/                 # index, new, edit, _form, show, delete
 │   ├── chefs/                  # index, new, edit, _form, show, delete
-│   └── ingredients/            # index, new, edit, _form, show, delete
+│   ├── ingredients/            # index, new, edit, _form, show, delete
+│   └── bookings/               # index (danh sách đặt bàn, đổi trạng thái)
 └── errors/
     ├── 404.ejs
     └── 500.ejs
@@ -613,7 +617,7 @@ thái nào chỉ tồn tại trong trình duyệt.
 - `DATABASE_URL` chỉ nằm trong `.env` trên server; `.env` nằm trong `.gitignore`, chỉ commit
 `.env.example` (chuỗi mẫu, không có mật khẩu).
 - Không truyền `process.env` hay `prisma` vào `res.render`. View chỉ nhận các helper an toàn
-qua `app.locals` (`formatPrice`, `formatQty`, `DEFAULT_DISH_IMAGE`).
+  qua `app.locals` (`formatPrice`, `formatQty`, `formatDateTime`, `formatPhone`, `DEFAULT_DISH_IMAGE`, `RESTAURANT`).
 - EJS chạy trên server nên đọc được mọi biến handler truyền vào; nếu in ra, giá trị nằm trong
 HTML gửi cho người truy cập. Vì vậy chỉ truyền đúng dữ liệu cần hiển thị.
 
@@ -698,8 +702,8 @@ hiện chữ `<script>` trên trang. `<%- %>` (không escape) chỉ dùng cho `i
 | Câu hỏi | Kết quả | Vị trí |
 | --- | --- | --- |
 | Có link hoặc route `GET` nào xóa hay sửa dữ liệu không? | Không. Mọi `router.get` chỉ đọc và render | `src/routes/**/*.js` |
-| Sửa và xóa có route `PATCH` và `DELETE` qua method override không? | Có | `router.patch("/:id")`, `router.delete("/:id")` trong 3 file admin; `methodOverride` ở `src/app.js` |
-| Thao tác ghi thành công có redirect `303` không? | Có, cả 9 handler ghi | `res.redirect(303, ...)` |
+| Sửa và xóa có route `PATCH` và `DELETE` qua method override không? | Có | `router.patch("/:id")`, `router.delete("/:id")` trong 3 file admin; `router.patch("/:id")` ở `src/routes/admin/bookings.js`; `methodOverride` ở `src/app.js` |
+| Thao tác ghi thành công có redirect `303` không? | Có, cả 11 handler ghi (9 CRUD + `POST /bookings` + `PATCH /admin/bookings`) | `res.redirect(303, ...)` |
 | Template có `fetch` hoặc AJAX không? | Không | Xem mục 14 |
 
 ### Kiểm tra mã nguồn: dữ liệu và bảo mật
@@ -750,7 +754,7 @@ JavaScript còn lại trong trang chỉ có ba loại, **không loại nào gử
 | --- | --- |
 | `views/partials/header.ejs` | Tải Tailwind CDN và khai báo bảng màu thương hiệu (`tailwind.config`) để tạo CSS |
 | `onerror` trên `<img>` (`views/dishes/*.ejs`) | Đổi sang ảnh mặc định khi ảnh món lỗi |
-| `onchange="this.form.submit()"` trên ô "Sắp xếp theo" | Gửi form `GET` thường (document request, không phải `fetch`). Có nút "Áp dụng" trong `<noscript>` nên vẫn dùng được khi tắt JavaScript |
+| `onchange="this.form.submit()"` trên ô "Sắp xếp theo" (cả `views/dishes/index.ejs` và `views/admin/dishes/index.ejs`) | Gửi form `GET` thường (document request, không phải `fetch`). Có nút "Áp dụng" trong `<noscript>` nên vẫn dùng được khi tắt JavaScript |
 
 Kiểm tra bằng `curl` (thêm `-i` để xem status và header `Location`):
 
@@ -947,4 +951,4 @@ bằng `303`.
 | `400` giữ giá trị, `404` thân thiện, `500` không lộ lỗi | Đạt |
 | Không `fetch`/AJAX, không GET ghi dữ liệu | Đạt |
 | Tiêu chí nghiệm thu 01 đến 05 | Đạt hết |
-| Minh chứng (`evidence/`) | Chưa có, cần chụp và quay (mục 15) |
+| Minh chứng (`evidence/`) | Đạt. Đã có đủ 5 file (mục 15) |
