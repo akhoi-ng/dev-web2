@@ -1,8 +1,14 @@
 require("dotenv").config();
-const app = require("./app");
+const { createApp } = require("./app");
 
 const PORT = Number(process.env.PORT) || 3000;
 
+if (!process.env.CORS_ORIGIN) {
+  console.warn("CORS_ORIGIN chưa được cấu hình: trình duyệt sẽ không gọi được API từ SPA.");
+}
+
+const app = createApp({ corsOrigin: process.env.CORS_ORIGIN || "" });
+
 app.listen(PORT, () => {
-  console.log(`Server đang chạy tại http://localhost:${PORT}`);
+  console.log(`API đang chạy tại http://localhost:${PORT}`);
 });
