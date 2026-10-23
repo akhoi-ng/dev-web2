@@ -1,11 +1,13 @@
 {
-  "name": "restaurant-manager",
+  "name": "restaurant-api",
   "version": "1.0.0",
-  "description": "Quản lý Nhà hàng - Express + EJS + Prisma (SSR)",
+  "description": "Lửa Hồng - REST API (Express + Prisma)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "acceptance": "node scripts/acceptance.mjs",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate"
@@ -15,10 +17,9 @@
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "ejs": "^3.1.10",
-    "express": "^4.21.2",
-    "method-override": "^3.0.0"
+    "express": "^4.21.2"
   },
   "devDependencies": {
     "prisma": "^6.16.0"
