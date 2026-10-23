@@ -6,6 +6,8 @@ const chefsRouter = require("./routes/chefs");
 const ingredientsRouter = require("./routes/ingredients");
 const statsRouter = require("./routes/stats");
 const optionsRouter = require("./routes/options");
+const bookingsRouter = require("./routes/bookings");
+const adminBookingsRouter = require("./routes/admin-bookings");
 
 function createApp({ corsOrigin }) {
   const app = express();
@@ -22,6 +24,8 @@ function createApp({ corsOrigin }) {
   app.use("/api/ingredients", ingredientsRouter);
   app.use("/api/stats", statsRouter);
   app.use("/api/options", optionsRouter);
+  app.use("/api/bookings", bookingsRouter);
+  app.use("/api/admin/bookings", adminBookingsRouter);
 
   // 4. 404 cho mọi route không khớp
   app.use(routeNotFound);

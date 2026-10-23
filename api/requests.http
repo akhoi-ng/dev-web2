@@ -20,7 +20,7 @@ GET {{api}}/api/dishes?q[]=x&category=xyz
 Origin: {{origin}}
 
 ### Chi tiết món đầu tiên trong danh sách (gửi "Danh sách món" trước)
-GET {{api}}/api/dishes/{{dishList.response.body.data[0].id}}
+GET {{api}}/api/dishes/{{dishList.response.body.$.data[0].id}}
 Origin: {{origin}}
 
 ### Không tồn tại -> NOT_FOUND (HTTP 200, ok: false)
@@ -54,7 +54,7 @@ Content-Type: application/json
 { "name": "Món thử", "price": 50000, "category": "Món chính" }
 
 ### Sửa một phần món vừa tạo
-PATCH {{api}}/api/dishes/{{createdDish.response.body.data.id}}
+PATCH {{api}}/api/dishes/{{createdDish.response.body.$.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
@@ -68,18 +68,18 @@ Content-Type: application/json
 { "price": 60000 }
 
 ### Sửa với tên rỗng -> VALIDATION_FAILED
-PATCH {{api}}/api/dishes/{{createdDish.response.body.data.id}}
+PATCH {{api}}/api/dishes/{{createdDish.response.body.$.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
 { "name": "" }
 
 ### Xóa món vừa tạo
-DELETE {{api}}/api/dishes/{{createdDish.response.body.data.id}}
+DELETE {{api}}/api/dishes/{{createdDish.response.body.$.data.id}}
 Origin: {{origin}}
 
 ### Xóa lại món đã xóa -> NOT_FOUND
-DELETE {{api}}/api/dishes/{{createdDish.response.body.data.id}}
+DELETE {{api}}/api/dishes/{{createdDish.response.body.$.data.id}}
 Origin: {{origin}}
 
 ### ---------- Đầu bếp ----------
@@ -112,29 +112,29 @@ Content-Type: application/json
 { "name": "Đầu bếp thử", "specialty": "Món thử" }
 
 ### Chi tiết đầu bếp vừa tạo
-GET {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+GET {{api}}/api/chefs/{{createdChef.response.body.$.data.id}}
 Origin: {{origin}}
 
 ### Sửa một phần đầu bếp vừa tạo
-PATCH {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+PATCH {{api}}/api/chefs/{{createdChef.response.body.$.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
 { "specialty": "Món thử đã sửa" }
 
 ### Sửa đầu bếp với tên rỗng -> VALIDATION_FAILED
-PATCH {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+PATCH {{api}}/api/chefs/{{createdChef.response.body.$.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
 { "name": "" }
 
 ### Xóa đầu bếp vừa tạo (món của họ còn lại, chef = null)
-DELETE {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+DELETE {{api}}/api/chefs/{{createdChef.response.body.$.data.id}}
 Origin: {{origin}}
 
 ### Xóa lại đầu bếp đã xóa -> NOT_FOUND
-DELETE {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+DELETE {{api}}/api/chefs/{{createdChef.response.body.$.data.id}}
 Origin: {{origin}}
 
 ### ---------- Nguyên liệu ----------
@@ -167,30 +167,84 @@ Content-Type: application/json
 { "name": "Nguyên liệu thử", "unit": "g" }
 
 ### Chi tiết nguyên liệu vừa tạo
-GET {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+GET {{api}}/api/ingredients/{{createdIngredient.response.body.$.data.id}}
 Origin: {{origin}}
 
 ### Sửa một phần nguyên liệu vừa tạo
-PATCH {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+PATCH {{api}}/api/ingredients/{{createdIngredient.response.body.$.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
 { "unit": "kg" }
 
 ### Sửa nguyên liệu với đơn vị rỗng -> VALIDATION_FAILED
-PATCH {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+PATCH {{api}}/api/ingredients/{{createdIngredient.response.body.$.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
 { "unit": "" }
 
 ### Xóa nguyên liệu vừa tạo
-DELETE {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+DELETE {{api}}/api/ingredients/{{createdIngredient.response.body.$.data.id}}
 Origin: {{origin}}
 
 ### Xóa lại nguyên liệu đã xóa -> NOT_FOUND
-DELETE {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+DELETE {{api}}/api/ingredients/{{createdIngredient.response.body.$.data.id}}
 Origin: {{origin}}
+
+### ---------- Đặt bàn ----------
+
+### Đặt bàn sai -> VALIDATION_FAILED (name, phone, ...)
+POST {{api}}/api/bookings
+Origin: {{origin}}
+Content-Type: application/json
+
+{}
+
+### Đặt bàn hợp lệ (gửi dòng này trước khi chạy các dòng bên dưới; ngày = 2 ngày nữa)
+# @name createdBooking
+POST {{api}}/api/bookings
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "Khách thử", "phone": "0123456789", "guests": 2, "date": "{{$datetime "YYYY-MM-DD" 2 d}}", "time": "18:00", "note": "" }
+
+### Tra cứu theo mã vừa nhận
+GET {{api}}/api/bookings/{{createdBooking.response.body.$.data.code}}
+Origin: {{origin}}
+
+### Mã không hợp lệ -> NOT_FOUND
+GET {{api}}/api/bookings/zzz
+Origin: {{origin}}
+
+### Admin: danh sách đặt bàn từ hôm nay
+GET {{api}}/api/admin/bookings
+Origin: {{origin}}
+
+### Admin: toàn bộ đặt bàn kể cả lịch đã qua
+GET {{api}}/api/admin/bookings?show=all
+Origin: {{origin}}
+
+### Admin: xác nhận yêu cầu vừa tạo
+PATCH {{api}}/api/admin/bookings/{{createdBooking.response.body.$.data.id}}
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "status": "confirmed" }
+
+### Admin: trạng thái sai -> VALIDATION_FAILED (status)
+PATCH {{api}}/api/admin/bookings/{{createdBooking.response.body.$.data.id}}
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "status": "x" }
+
+### Admin: id không tồn tại -> NOT_FOUND
+PATCH {{api}}/api/admin/bookings/999999
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "status": "confirmed" }
 
 ### ---------- Khác ----------
 

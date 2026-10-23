@@ -318,9 +318,79 @@ async function ingredientsRows() {
   });
 }
 
+/* ---------------- Đặt bàn ---------------- */
+// API không có DELETE đặt bàn nên các yêu cầu thử còn lại trong DB (tên "ZZ Acceptance");
+// chạy lại seed là xóa sạch (seed reset bookings).
+async function bookingsRows() {
+  // Ngày mai theo giờ Việt Nam: luôn hợp lệ với khung giờ 18:00
+  const tomorrow = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(
+    new Date(Date.now() + 24 * 60 * 60 * 1000)
+  );
+
+  await check("bookings: POST sai", { method: "POST", path: "/api/bookings", body: {} }, {
+    ok: false,
+    code: "VALIDATION_FAILED",
+    fieldsHas: ["name", "phone"],
+  });
+
+  const created = await check("bookings: POST hợp lệ", {
+    method: "POST",
+    path: "/api/bookings",
+    body: { name: "ZZ Acceptance", phone: "0123456789", guests: 2, date: tomorrow, time: "18:00", note: "seed resets bookings" },
+  }, {
+    ok: true,
+    test: (j) => /^[0-9a-f]{8}$/.test(j.data?.code ?? "") || `code = ${j.data?.code}`,
+  });
+  const id = created.json?.data?.id;
+  const code = created.json?.data?.code;
+
+  // Gắn với id để dòng FAIL gọn nếu POST tạo thất bại (id và code cùng đến từ một phản hồi)
+  await checkWithId("bookings: GET theo mã", id, () => ({ path: `/api/bookings/${code}` }), {
+    ok: true,
+    test: (j) => j.data?.id === id || `id = ${j.data?.id}`,
+  });
+  await check("bookings: GET zzz", { path: "/api/bookings/zzz" }, { ok: false, code: "NOT_FOUND" });
+  await check("bookings: GET mã hợp lệ nhưng không có", { path: "/api/bookings/00000000" }, { ok: false, code: "NOT_FOUND" });
+
+  await checkWithId("admin bookings: list (từ hôm nay)", id, () => ({ path: "/api/admin/bookings" }), {
+    ok: true,
+    dataIsArray: true,
+    test: (j) => j.data.some((b) => b.id === id) || "thiếu yêu cầu vừa tạo",
+  });
+  await checkWithId("admin bookings: list ?show=all", id, () => ({ path: "/api/admin/bookings?show=all" }), {
+    ok: true,
+    dataIsArray: true,
+    test: (j) => j.data.some((b) => b.id === id) || "thiếu yêu cầu vừa tạo",
+  });
+
+  await checkWithId("admin bookings: PATCH confirmed", id, (i) => ({
+    method: "PATCH",
+    path: `/api/admin/bookings/${i}`,
+    body: { status: "confirmed" },
+  }), {
+    ok: true,
+    test: (j) => j.data?.status === "confirmed" || `status = ${j.data?.status}`,
+  });
+  await checkWithId("admin bookings: PATCH status sai", id, (i) => ({
+    method: "PATCH",
+    path: `/api/admin/bookings/${i}`,
+    body: { status: "x" },
+  }), {
+    ok: false,
+    code: "VALIDATION_FAILED",
+    fieldsHas: ["status"],
+  });
+  await check("admin bookings: PATCH 999999", {
+    method: "PATCH",
+    path: "/api/admin/bookings/999999",
+    body: { status: "confirmed" },
+  }, { ok: false, code: "NOT_FOUND" });
+}
+
 await dishesRows();
 await chefsRows();
 await ingredientsRows();
+await bookingsRows();
 
 if (failed > 0) {
   console.log(`\n${failed} dòng thất bại`);
