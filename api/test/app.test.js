@@ -107,7 +107,7 @@ test("preflight from allowed origin → 204 + exact origin", async () => {
     });
     assert.equal(r.status, 204);
     assert.equal(r.headers.get("access-control-allow-origin"), ORIGIN);
-    assert.match(r.headers.get("access-control-allow-methods"), /PATCH/);
+    assert.equal(r.headers.get("access-control-allow-methods"), "GET,POST,PATCH,DELETE");
     assert.match(r.headers.get("access-control-allow-headers"), /Content-Type/i);
   });
 });

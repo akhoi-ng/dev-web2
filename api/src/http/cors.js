@@ -9,7 +9,7 @@ function corsMiddleware(corsOrigin) {
 
   return cors({
     origin: origins,
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type"],
     optionsSuccessStatus: 204,
   });
