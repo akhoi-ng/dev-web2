@@ -1,0 +1,95 @@
+# Thử API bằng REST Client (VS Code). Chạy API trước: npm run dev
+@api = http://localhost:3000
+@origin = http://localhost:5173
+
+### Danh sách món (không phân trang)
+GET {{api}}/api/dishes
+Origin: {{origin}}
+
+### Danh sách món có phân trang, lọc, sắp xếp
+GET {{api}}/api/dishes?page=1&pageSize=9&category=Khai vị&sort=price-asc
+Origin: {{origin}}
+
+### page không hợp lệ -> trang 1
+GET {{api}}/api/dishes?page=abc
+Origin: {{origin}}
+
+### q là mảng và danh mục lạ -> bị bỏ qua
+GET {{api}}/api/dishes?q[]=x&category=xyz
+Origin: {{origin}}
+
+### Chi tiết món
+GET {{api}}/api/dishes/1
+Origin: {{origin}}
+
+### Không tồn tại -> NOT_FOUND (HTTP 200, ok: false)
+GET {{api}}/api/dishes/999999
+Origin: {{origin}}
+
+### id không phải số -> NOT_FOUND
+GET {{api}}/api/dishes/abc
+Origin: {{origin}}
+
+### Tạo món sai -> VALIDATION_FAILED (name, price)
+POST {{api}}/api/dishes
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "", "price": -5 }
+
+### Giá là chuỗi -> VALIDATION_FAILED (price)
+POST {{api}}/api/dishes
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "Test", "price": "50000" }
+
+### Tạo món hợp lệ
+POST {{api}}/api/dishes
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "Món thử", "price": 50000, "category": "Món chính" }
+
+### Sửa một phần (đổi id cho khớp món vừa tạo)
+PATCH {{api}}/api/dishes/1
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "price": 60000 }
+
+### Sửa món không tồn tại -> NOT_FOUND
+PATCH {{api}}/api/dishes/999999
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "price": 60000 }
+
+### Sửa với tên rỗng -> VALIDATION_FAILED
+PATCH {{api}}/api/dishes/1
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "" }
+
+### Xóa món (đổi id cho khớp món vừa tạo)
+DELETE {{api}}/api/dishes/999999
+Origin: {{origin}}
+
+### Route không tồn tại -> HTTP 404 {message}
+GET {{api}}/api/bok
+Origin: {{origin}}
+
+### Thống kê thực đơn
+GET {{api}}/api/stats
+Origin: {{origin}}
+
+### Tùy chọn cho form và bộ lọc
+GET {{api}}/api/options
+Origin: {{origin}}
+
+### Preflight CORS cho PATCH -> 204 kèm đúng origin
+OPTIONS {{api}}/api/dishes/1
+Origin: {{origin}}
+Access-Control-Request-Method: PATCH
+Access-Control-Request-Headers: content-type
