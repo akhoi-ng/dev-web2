@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { font-family: "Be Vietnam Pro", system-ui, sans-serif; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #F4B13E; outline-offset: 2px; }
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+
+/* Bảng quản trị: trên điện thoại mỗi dòng thành một thẻ, nhãn cột lấy từ data-label */
+@media (max-width: 767px) {
+  .rtable thead { display: none; }
+  .rtable, .rtable tbody, .rtable tr, .rtable td { display: block; }
+  .rtable tr { padding: 14px 16px; }
+  .rtable td { padding: 5px 0 !important; }
+  .rtable td[data-label] { display: flex; justify-content: space-between; align-items: center; gap: 16px; text-align: right; }
+  .rtable td[data-label]::before { content: attr(data-label); flex: none; font-weight: 600; color: #78716c; text-align: left; }
+  .rtable td.rt-title { font-size: 16px; padding-bottom: 8px !important; }
+  .rtable td.rt-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; padding-top: 12px !important; border-top: 1px solid #f5f5f4; }
+  .rtable td.rt-actions a, .rtable td.rt-actions button { display: inline-flex; align-items: center; min-height: 44px; padding-left: 16px; padding-right: 16px; }
+}
