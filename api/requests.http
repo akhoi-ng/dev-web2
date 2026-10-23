@@ -3,6 +3,7 @@
 @origin = http://localhost:5173
 
 ### Danh sách món (không phân trang)
+# @name dishList
 GET {{api}}/api/dishes
 Origin: {{origin}}
 
@@ -18,8 +19,8 @@ Origin: {{origin}}
 GET {{api}}/api/dishes?q[]=x&category=xyz
 Origin: {{origin}}
 
-### Chi tiết món
-GET {{api}}/api/dishes/1
+### Chi tiết món đầu tiên trong danh sách (gửi "Danh sách món" trước)
+GET {{api}}/api/dishes/{{dishList.response.body.data[0].id}}
 Origin: {{origin}}
 
 ### Không tồn tại -> NOT_FOUND (HTTP 200, ok: false)
@@ -44,15 +45,16 @@ Content-Type: application/json
 
 { "name": "Test", "price": "50000" }
 
-### Tạo món hợp lệ
+### Tạo món hợp lệ (gửi dòng này trước khi chạy PATCH/DELETE bên dưới)
+# @name createdDish
 POST {{api}}/api/dishes
 Origin: {{origin}}
 Content-Type: application/json
 
 { "name": "Món thử", "price": 50000, "category": "Món chính" }
 
-### Sửa một phần (đổi id cho khớp món vừa tạo)
-PATCH {{api}}/api/dishes/1
+### Sửa một phần món vừa tạo
+PATCH {{api}}/api/dishes/{{createdDish.response.body.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
@@ -66,15 +68,131 @@ Content-Type: application/json
 { "price": 60000 }
 
 ### Sửa với tên rỗng -> VALIDATION_FAILED
-PATCH {{api}}/api/dishes/1
+PATCH {{api}}/api/dishes/{{createdDish.response.body.data.id}}
 Origin: {{origin}}
 Content-Type: application/json
 
 { "name": "" }
 
-### Xóa món (đổi id cho khớp món vừa tạo)
-DELETE {{api}}/api/dishes/999999
+### Xóa món vừa tạo
+DELETE {{api}}/api/dishes/{{createdDish.response.body.data.id}}
 Origin: {{origin}}
+
+### Xóa lại món đã xóa -> NOT_FOUND
+DELETE {{api}}/api/dishes/{{createdDish.response.body.data.id}}
+Origin: {{origin}}
+
+### ---------- Đầu bếp ----------
+
+### Danh sách đầu bếp (không phân trang)
+GET {{api}}/api/chefs
+Origin: {{origin}}
+
+### Danh sách đầu bếp có phân trang
+GET {{api}}/api/chefs?page=1&pageSize=2
+Origin: {{origin}}
+
+### Không tồn tại -> NOT_FOUND
+GET {{api}}/api/chefs/999999
+Origin: {{origin}}
+
+### Tạo đầu bếp sai -> VALIDATION_FAILED (name, specialty)
+POST {{api}}/api/chefs
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "", "specialty": "" }
+
+### Tạo đầu bếp hợp lệ (gửi dòng này trước khi chạy các dòng bên dưới)
+# @name createdChef
+POST {{api}}/api/chefs
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "Đầu bếp thử", "specialty": "Món thử" }
+
+### Chi tiết đầu bếp vừa tạo
+GET {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+Origin: {{origin}}
+
+### Sửa một phần đầu bếp vừa tạo
+PATCH {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "specialty": "Món thử đã sửa" }
+
+### Sửa đầu bếp với tên rỗng -> VALIDATION_FAILED
+PATCH {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "" }
+
+### Xóa đầu bếp vừa tạo (món của họ còn lại, chef = null)
+DELETE {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+Origin: {{origin}}
+
+### Xóa lại đầu bếp đã xóa -> NOT_FOUND
+DELETE {{api}}/api/chefs/{{createdChef.response.body.data.id}}
+Origin: {{origin}}
+
+### ---------- Nguyên liệu ----------
+
+### Danh sách nguyên liệu (không phân trang)
+GET {{api}}/api/ingredients
+Origin: {{origin}}
+
+### Danh sách nguyên liệu có phân trang
+GET {{api}}/api/ingredients?page=1&pageSize=5
+Origin: {{origin}}
+
+### Không tồn tại -> NOT_FOUND
+GET {{api}}/api/ingredients/999999
+Origin: {{origin}}
+
+### Tạo nguyên liệu sai -> VALIDATION_FAILED (name, unit)
+POST {{api}}/api/ingredients
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "", "unit": "" }
+
+### Tạo nguyên liệu hợp lệ (gửi dòng này trước khi chạy các dòng bên dưới)
+# @name createdIngredient
+POST {{api}}/api/ingredients
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "Nguyên liệu thử", "unit": "g" }
+
+### Chi tiết nguyên liệu vừa tạo
+GET {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+Origin: {{origin}}
+
+### Sửa một phần nguyên liệu vừa tạo
+PATCH {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "unit": "kg" }
+
+### Sửa nguyên liệu với đơn vị rỗng -> VALIDATION_FAILED
+PATCH {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "unit": "" }
+
+### Xóa nguyên liệu vừa tạo
+DELETE {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+Origin: {{origin}}
+
+### Xóa lại nguyên liệu đã xóa -> NOT_FOUND
+DELETE {{api}}/api/ingredients/{{createdIngredient.response.body.data.id}}
+Origin: {{origin}}
+
+### ---------- Khác ----------
 
 ### Route không tồn tại -> HTTP 404 {message}
 GET {{api}}/api/bok

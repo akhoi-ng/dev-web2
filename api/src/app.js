@@ -2,6 +2,8 @@ const express = require("express");
 const { corsMiddleware } = require("./http/cors");
 const { requireJson, routeNotFound, errorHandler } = require("./http/respond");
 const dishesRouter = require("./routes/dishes");
+const chefsRouter = require("./routes/chefs");
+const ingredientsRouter = require("./routes/ingredients");
 const statsRouter = require("./routes/stats");
 const optionsRouter = require("./routes/options");
 
@@ -16,6 +18,8 @@ function createApp({ corsOrigin }) {
 
   // 3. Routers: các task sau đăng ký bằng app.use("/api/<tài-nguyên>", router)
   app.use("/api/dishes", dishesRouter);
+  app.use("/api/chefs", chefsRouter);
+  app.use("/api/ingredients", ingredientsRouter);
   app.use("/api/stats", statsRouter);
   app.use("/api/options", optionsRouter);
 
