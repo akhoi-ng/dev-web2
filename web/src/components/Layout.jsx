@@ -192,20 +192,35 @@ function Footer() {
 }
 
 export default function Layout() {
-  const { pathname, hash } = useLocation();
+  const { pathname, search, hash, key } = useLocation();
   const isAdmin = pathname.startsWith("/admin");
 
-  // SPA không tự cuộn: về đầu trang khi đổi trang, tới #mục nếu đã có trên trang
+  // SPA không tự cuộn: về đầu trang khi đổi trang hoặc đổi query (lọc, phân trang);
+  // nếu URL có #mục thì cuộn tới mục đó, thử lại trong ~1 giây vì nội dung tải bất đồng bộ.
   useEffect(() => {
-    if (hash) {
-      const el = document.getElementById(hash.slice(1));
+    if (!hash) {
+      window.scrollTo(0, 0);
+      return undefined;
+    }
+    let id = hash.slice(1);
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      // giữ nguyên nếu hash không hợp lệ
+    }
+    const deadline = performance.now() + 1000;
+    let frame = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(id);
       if (el) {
         el.scrollIntoView();
-        return;
+      } else if (performance.now() < deadline) {
+        frame = requestAnimationFrame(tryScroll);
       }
-    }
-    window.scrollTo(0, 0);
-  }, [pathname, hash]);
+    };
+    tryScroll();
+    return () => cancelAnimationFrame(frame);
+  }, [pathname, search, hash, key]);
 
   return (
     <>
