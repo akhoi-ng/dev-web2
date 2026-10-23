@@ -41,6 +41,10 @@ function errorHandler(err, req, res, next) {
   if (err.type === "entity.parse.failed") {
     return res.status(400).json({ message: "JSON không hợp lệ" });
   }
+  // Lỗi khác do client gây ra khi đọc body (413 body quá lớn, 415 charset không hỗ trợ...)
+  if (err.expose && err.status >= 400 && err.status < 500) {
+    return res.status(err.status).json({ message: "Không đọc được body của request" });
+  }
   console.error(err);
   if (res.headersSent) return next(err);
   res.status(500).json({ message: "Lỗi hệ thống" });

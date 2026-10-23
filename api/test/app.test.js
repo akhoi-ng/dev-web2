@@ -126,3 +126,31 @@ test("404 response still carries CORS header", async () => {
     assert.equal(r.headers.get("access-control-allow-origin"), ORIGIN);
   });
 });
+
+test("body quá lớn (413) → 413 { message }, không phải 500", async (t) => {
+  t.mock.method(console, "error", () => {});
+  await withServer(async (base) => {
+    const r = await fetch(base + "/api/dishes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "x".repeat(200 * 1024) }),
+    });
+    assert.equal(r.status, 413);
+    const body = await r.json();
+    assert.equal("ok" in body, false);
+    assert.equal(typeof body.message, "string");
+  });
+});
+
+test("charset không hỗ trợ (415) → 415 { message }, không phải 500", async (t) => {
+  t.mock.method(console, "error", () => {});
+  await withServer(async (base) => {
+    const r = await fetch(base + "/api/dishes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=latin1" },
+      body: "{}",
+    });
+    assert.equal(r.status, 415);
+    assert.equal("ok" in (await r.json()), false);
+  });
+});

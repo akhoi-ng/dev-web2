@@ -42,8 +42,9 @@ như thế nào?*
 
 ## 3. Cách chạy
 
-Yêu cầu: Node.js 18 trở lên (script test của `web` dùng glob nên cần Node 21+) và một project
-Supabase. Máy của nhóm dùng Node trong môi trường conda: `conda activate web`.
+Yêu cầu: Node.js 18 trở lên để chạy ứng dụng; `npm test` của cả `api` và `web` dùng glob
+(`node --test "…/**/*.test.js"`) nên cần Node 21+. Nhóm dùng Node 26 trong môi trường conda:
+`conda activate web`. Cần thêm một project Supabase.
 
 **Terminal 1 — API**
 
@@ -55,6 +56,9 @@ npx prisma db push        # tạo bảng (Code-first)
 npx prisma db seed        # XÓA dữ liệu cũ rồi nạp dữ liệu mẫu
 npm run dev               # http://localhost:3000
 ```
+
+Phải chạy API **trước** và để nó chạy suốt: nếu chỉ chạy `web`, mọi trang hiện "Không tải được
+dữ liệu" (lỗi tầng 1 — không có response vì không có gì nghe ở cổng 3000).
 
 **Terminal 2 — SPA**
 
@@ -137,10 +141,11 @@ docs/superpowers/          bản thiết kế và kế hoạch triển khai
 | Tình huống | Status | Body |
 | --- | --- | --- |
 | Thành công, kể cả danh sách rỗng | 200 | `ok: true` |
-| Id không có hoặc sai kiểu (`999999`, `abc`) | 200 | `ok: false`, `NOT_FOUND` |
+| Id không có, sai kiểu hoặc vượt giới hạn INT4 (`999999`, `abc`, `99999999999`) | 200 | `ok: false`, `NOT_FOUND` |
 | Input sai | 200 | `ok: false`, `VALIDATION_FAILED` + `fields` |
 | Sai URL (`/api/bok`) | 404 | `{ "message" }`, **không có `ok`** |
-| POST/PATCH thiếu `Content-Type: application/json`, hoặc JSON hỏng | 400 | `{ "message" }`, không có `ok` |
+| POST/PATCH thiếu `Content-Type: application/json`, JSON hỏng, hoặc body là giá trị đơn (`null`, `"x"`, `1`) thay vì object | 400 | `{ "message" }`, không có `ok` |
+| Body quá lớn (> 100 KB) / charset không hỗ trợ | 413 / 415 | `{ "message" }`, không có `ok` |
 | Lỗi hệ thống (mất kết nối DB, lỗi mã nguồn) | 500 | `{ "message" }`, không có `ok`; chi tiết chỉ ghi log ở server |
 
 Twist so với slide, phù hợp với project:
@@ -196,14 +201,15 @@ Phần làm thêm (giữ từ Block 5):
 | `/dishes/:id` | Chi tiết món | `GET /api/dishes/:id` |
 | `/about` | Về chúng tôi | `GET /api/chefs`, `GET /api/stats` |
 | `/bookings/new` | Form đặt bàn | `GET /api/options`; khi gửi `POST /api/bookings` |
-| `/bookings/:code` | Xác nhận đặt bàn | `GET /api/bookings/:code` |
-| `/admin/dishes?sort=&page=` | Bảng món ăn | `GET /api/dishes?...` |
-| `/admin/dishes/new` | Form thêm | khi gửi `POST /api/dishes` |
+| `/bookings/:code` | Xác nhận đặt bàn | `GET /api/bookings/:code`, `GET /api/options` (nhãn trạng thái) |
+| `/admin/dishes?sort=&page=` | Bảng món ăn | `GET /api/dishes?...`, `GET /api/options` (kiểu sắp xếp) |
+| `/admin/dishes/new` | Form thêm | `GET /api/chefs`, `GET /api/ingredients`, `GET /api/options`; khi gửi `POST /api/dishes` |
 | `/admin/dishes/:id` | Chi tiết (trang đích sau khi thêm/sửa) | `GET /api/dishes/:id` |
-| `/admin/dishes/:id/edit` | Form sửa | `GET /api/dishes/:id`; khi gửi `PATCH` |
+| `/admin/dishes/:id/edit` | Form sửa | `GET /api/dishes/:id`, `GET /api/chefs`, `GET /api/ingredients`, `GET /api/options`; khi gửi `PATCH` |
 | `/admin/dishes/:id/delete` | Xác nhận xóa; chỉ nút "Xác nhận xóa" gọi `DELETE` | `GET`, rồi `DELETE /api/dishes/:id` |
-| `/admin/chefs…`, `/admin/ingredients…` | Sáu trang như trên cho mỗi tài nguyên | tương ứng |
-| `/admin/bookings?show=all` | Danh sách đặt bàn + nút đổi trạng thái | `GET`, `PATCH /api/admin/bookings/:id` |
+| `/admin/chefs…` | Sáu trang như trên | `/api/chefs…` |
+| `/admin/ingredients…` | Sáu trang như trên; form thêm/sửa lấy gợi ý đơn vị | `/api/ingredients…`, form thêm/sửa thêm `GET /api/options` |
+| `/admin/bookings?show=all` | Danh sách đặt bàn + nút đổi trạng thái | `GET /api/admin/bookings`, `GET /api/options`; `PATCH /api/admin/bookings/:id` |
 | `*` | Trang "không tìm thấy" của SPA | — |
 
 ## 8. CORS
@@ -302,12 +308,75 @@ Bật **Disable cache** trong Network khi kiểm tra preflight vì browser có t
 
 | Lệnh | Kết quả lần chạy cuối |
 | --- | --- |
-| `cd api && npm test` | 36/36 pass (tầng HTTP, CORS, validator, helper) |
+| `cd api && npm test` | 39/39 pass (tầng HTTP, CORS, lỗi 413/415, validator, helper) |
 | `cd api && npm run acceptance` (API đang chạy) | toàn bộ PASS: món ăn, đầu bếp (kể cả xóa đầu bếp → món còn `chef: null`), nguyên liệu, đặt bàn, 404, CORS |
 | `cd web && npm test` | 9/9 pass (phân loại lỗi network/http/business, AbortError, Content-Type chỉ khi có body) |
 | `cd web && npm run build` | build thành công |
 
-## 14. Minh chứng (nhóm cần chụp)
+## 14. Đoạn code chính cần giải thích
+
+**Response shape ở một chỗ** (`api/src/http/respond.js`): mọi handler trả qua hai hàm này, nên
+không route nào có dạng body riêng.
+
+```js
+function ok(res, data, meta) {
+  const body = { ok: true, data };
+  if (meta !== undefined) body.meta = meta;
+  return res.status(200).json(body);
+}
+
+function fail(res, code, message, fields) {
+  console.warn("[business]", code, res.req.method, res.req.originalUrl);
+  const error = { code, message };
+  if (fields !== undefined) error.fields = fields;
+  return res.status(200).json({ ok: false, error });
+}
+```
+
+**Handler theo thứ tự route → body → input → database → bản ghi** (`api/src/routes/dishes.js`,
+PATCH): chỉ bắt lỗi nghiệp vụ biết trước, lỗi khác đi tới 500.
+
+```js
+const id = parseId(req.params.id);
+if (id === null) return notFound(res, "Món ăn");
+
+const { chefs, ingredients } = await loadRefs();
+const { fields, data, recipe } = validateDish(req.body, { chefs, ingredients, partial: true });
+if (!isEmpty(fields)) return validationFailed(res, fields);
+
+if (recipe !== undefined) data.ingredients = { deleteMany: {}, create: recipe };
+try {
+  const dish = await prisma.dish.update({ where: { id }, data, include: DETAIL_INCLUDE });
+  ok(res, dish);
+} catch (err) {
+  if (isNotFoundError(err)) return notFound(res, "Món ăn");   // P2025
+  throw err;                                                  // lỗi hệ thống → 500
+}
+```
+
+**Ba tầng lỗi ở SPA** (`web/src/api/client.js`, rút gọn):
+
+```js
+try {
+  res = await fetchImpl(url, init);           // Content-Type chỉ đặt khi có body
+} catch (err) {
+  if (err.name === "AbortError") throw err;   // request bị huỷ khi đổi trang: bỏ qua
+  throw new ApiError("network");              // tầng 1: không có response
+}
+if (!res.ok) throw new ApiError("http", res.status);                 // tầng 2
+const payload = await res.json().catch(() => null);
+if (typeof payload?.ok !== "boolean") throw new ApiError("http", res.status);
+if (!payload.ok) throw new ApiError("business", res.status, payload.error.code, payload.error.fields);  // tầng 3
+return { data: payload.data, meta: payload.meta };
+```
+
+**Mỗi trang tự tải dữ liệu, huỷ request cũ** (`web/src/hooks/useApiData.js`): mỗi lần `deps` đổi
+tạo một `AbortController` mới và huỷ cái cũ trong cleanup, nên response của id cũ không ghi đè id
+mới; `NOT_FOUND` thành trạng thái `notFound`, lỗi kỹ thuật thành `error` kèm `retry()`.
+
+(Các đoạn trên được rút gọn để đọc; xem file gốc để có đầy đủ chi tiết.)
+
+## 15. Minh chứng (nhóm cần chụp)
 
 Thư mục `evidence/` dành cho minh chứng Block 6:
 
@@ -318,7 +387,7 @@ Thư mục `evidence/` dành cho minh chứng Block 6:
 5. Tắt API → trang hiện lỗi chung với nút "Thử lại", không trắng trang.
 6. Video ngắn: tìm món, thêm/sửa/xóa một món, đặt bàn, xác nhận đặt bàn ở trang quản trị.
 
-## 15. Phạm vi làm thêm so với đề
+## 16. Phạm vi làm thêm so với đề
 
 - Quan hệ đầu bếp ↔ món và công thức món ↔ nguyên liệu (bảng nối có định lượng).
 - Lọc theo danh mục, sắp xếp, phân trang (qua `meta`), số liệu đầu trang thực đơn.
@@ -326,7 +395,7 @@ Thư mục `evidence/` dành cho minh chứng Block 6:
 - Trang "Về chúng tôi".
 - Chặn bấm Gửi hai lần, huỷ request cũ khi đổi trang, tiêu đề tab theo trang.
 
-## 16. Tổng kết
+## 17. Tổng kết
 
 - REST API: URL là tài nguyên, method là thao tác, body có `ok`, `data` hoặc `error`.
 - Status báo lỗi kỹ thuật; `error.code` báo lỗi nghiệp vụ, status vẫn 200.
