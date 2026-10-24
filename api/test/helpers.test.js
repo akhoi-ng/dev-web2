@@ -46,3 +46,9 @@ test("các helper chỉ dùng cho giao diện đã bị gỡ", () => {
     assert.equal(helpers[name], undefined, name);
   }
 });
+
+test("parseId: id vượt giới hạn INT4 của PostgreSQL → null (NOT_FOUND, không phải 500)", () => {
+  assert.equal(parseId("2147483647"), 2147483647);
+  assert.equal(parseId("2147483648"), null);
+  assert.equal(parseId("99999999999"), null);
+});

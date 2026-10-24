@@ -15,7 +15,8 @@ const asyncHandler = (fn) => (req, res, next) =>
 // Ép kiểu id từ URL; trả về null nếu không phải số nguyên dương.
 function parseId(raw) {
   const id = Number(raw);
-  if (!Number.isInteger(id) || id <= 0) return null;
+  // Cột id là INT4: số lớn hơn giới hạn không thể có bản ghi, và đưa vào Prisma sẽ gây lỗi 500
+  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return null;
   return id;
 }
 

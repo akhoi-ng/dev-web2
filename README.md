@@ -22,9 +22,9 @@ React Router (web) → useApiData → API client (fetch) → Express router (api
 Thao tác ghi đi qua `fetch` với `POST` / `PATCH` (body JSON) hoặc `DELETE` (không body), rồi
 SPA chuyển trang bằng điều hướng phía client (không tải lại cả document).
 
-> **Phạm vi giao diện hiện tại:** SPA đã có đầy đủ trang khách, trang quản trị **món ăn** và
-> trang quản trị **đặt bàn**. API đã có CRUD cho **đầu bếp** và **nguyên liệu**, nhưng SPA
-> chưa có trang quản trị cho hai đối tượng này. Chi tiết ở mục 13.
+> **Phạm vi giao diện hiện tại:** SPA có đủ trang khách và trang quản trị cho cả bốn nhóm:
+> **món ăn**, **đầu bếp**, **nguyên liệu** và **đặt bàn**. Mọi thao tác CRUD của ba tài
+> nguyên chính đều có giao diện tương ứng.
 
 ## 1. Thông tin nhóm
 
@@ -88,9 +88,9 @@ api/                                  # Backend: chỉ JSON
 │   ├── schema.prisma                 # Dish, Chef, Ingredient, DishIngredient, Booking
 │   └── seed.js                       # xóa dữ liệu cũ rồi nạp 51 món, 5 đầu bếp, 45 nguyên liệu
 ├── test/
-│   ├── app.test.js                   # response shape, 400/404, CORS, preflight
+│   ├── app.test.js                   # response shape, 400/404/413/415, CORS, preflight
 │   ├── validators.test.js            # luật validate và chế độ PATCH một phần
-│   └── helpers.test.js               # parseId, paginate, pageParams, ngày giờ Việt Nam
+│   └── helpers.test.js               # parseId (kể cả giới hạn INT4), paginate, pageParams, ngày giờ
 ├── scripts/acceptance.mjs            # chạy toàn bộ bảng REST + CORS + đặt bàn
 ├── requests.http                     # request mẫu cho REST Client của IDE
 ├── .env.example
@@ -117,7 +117,9 @@ web/                                  # Frontend: React SPA
 │   │   ├── bookings/                 # form đặt bàn, trang xác nhận
 │   │   └── admin/
 │   │       ├── bookings/             # danh sách và đổi trạng thái
-│   │       └── dishes/               # danh sách, thêm, chi tiết, sửa, xóa
+│   │       ├── dishes/               # danh sách, thêm, chi tiết, sửa, xóa
+│   │       ├── chefs/                # danh sách, thêm, chi tiết, sửa, xóa
+│   │       └── ingredients/          # danh sách, thêm, chi tiết, sửa, xóa
 │   └── lib/                          # format giá/ngày/điện thoại, thông tin nhà hàng
 ├── index.html
 ├── vite.config.js
@@ -127,6 +129,7 @@ web/                                  # Frontend: React SPA
 └── package.json
 
 docs/superpowers/                     # spec và plan của Block 6
+evidence/                             # minh chứng; hiện chỉ có .gitkeep
 README.md
 .gitignore                            # node_modules/, .env, dist/
 ```
@@ -285,17 +288,23 @@ Lỗi nghiệp vụ:
 | Trường hợp | Status | Body |
 | --- | --- | --- |
 | Thành công, kể cả danh sách rỗng | `200` | `ok: true` |
-| Id sai định dạng, không tồn tại | `200` | `ok: false`, `NOT_FOUND` |
+| Id sai định dạng, vượt giới hạn cột INT4 (2 147 483 647), không tồn tại | `200` | `ok: false`, `NOT_FOUND` |
 | Dữ liệu gửi lên sai | `200` | `ok: false`, `VALIDATION_FAILED` + `fields` |
 | Route `/api/...` không khớp | `404` | `{ "message": "Không tìm thấy route" }`, **không có `ok`** |
 | `POST`/`PATCH` không gửi `Content-Type: application/json` | `400` | `{ "message": "Body phải là JSON (Content-Type: application/json)" }` |
 | JSON hỏng | `400` | `{ "message": "JSON không hợp lệ" }` |
+| Body vượt quá 100 KB | `413` | `{ "message": "Không đọc được body của request" }` |
+| Body dùng charset không hỗ trợ (ví dụ `latin1`) | `415` | `{ "message": "Không đọc được body của request" }` |
 | Lỗi hệ thống (mất DB, bug) | `500` | `{ "message": "Lỗi hệ thống" }`; chi tiết chỉ ghi ở `console.error` |
 
 Điểm cần lưu ý: **không tìm thấy bản ghi không phải HTTP 404**. Đây là lỗi nghiệp vụ, trả
 `200` với `ok: false` và `error.code = "NOT_FOUND"`. SPA phân biệt hai loại này ở tầng API
 client (mục 9), nên vẫn hiện đúng trang "Không tìm thấy". Khi kiểm tra bằng `curl`, phải xem
 **body** chứ không chỉ status.
+
+`express.json()` mặc định chỉ đọc body tới 100 KB. Các lỗi đọc body do phía client gây ra
+(body quá lớn → `413`, charset không hỗ trợ → `415`...) được `errorHandler` giữ nguyên status
+và chỉ trả `{ "message": "Không đọc được body của request" }`, thay vì biến thành `500`.
 
 ### 7.3. Thứ tự middleware (`api/src/app.js`)
 
@@ -306,7 +315,7 @@ app.use(requireJson);                   // 3. POST/PATCH bắt buộc JSON
 app.use("/api/dishes", dishesRouter);   // 4. routers
 // ...
 app.use(routeNotFound);                 // 5. 404 không có ok
-app.use(errorHandler);                  // 6. 500 không lộ err.message
+app.use(errorHandler);                  // 6. lỗi còn lại: 4xx body / 500 không lộ err.message
 ```
 
 `corsMiddleware` đặt trước router để cả phản hồi lỗi vẫn có header CORS cho origin hợp lệ.
@@ -337,6 +346,10 @@ Với `:res` là `dishes`, `chefs` hoặc `ingredients`:
 | Thêm | `POST /api/:res` | Bản ghi vừa tạo (có `id`) | `VALIDATION_FAILED` |
 | Sửa một phần | `PATCH /api/:res/:id` | Bản ghi sau khi sửa | `VALIDATION_FAILED`, `NOT_FOUND` |
 | Xóa | `DELETE /api/:res/:id` | `data: null` | `NOT_FOUND` |
+
+`:id` được đọc bằng `parseId()`: phải là số nguyên dương và không vượt quá `2 147 483 647`
+(giới hạn cột `INT4` của PostgreSQL). Giá trị không hợp lệ — kể cả id quá lớn — trả
+`NOT_FOUND`, thay vì để Prisma ném lỗi và API trả `500`.
 
 Danh sách nhận `?page` và `?pageSize`:
 
@@ -403,6 +416,16 @@ khách tối đa 20, đặt trước tối đa 60 ngày, cùng `minDate`/`maxDat
 | `/admin/dishes/:id` | Chi tiết món trong quản trị | `GET /api/dishes/:id`; đích sau khi thêm/sửa |
 | `/admin/dishes/:id/edit` | Form sửa, điền sẵn từ DB | `GET /api/dishes/:id` + options; `PATCH /api/dishes/:id` |
 | `/admin/dishes/:id/delete` | Trang xác nhận xóa | `GET /api/dishes/:id`; chỉ nút xác nhận mới gọi `DELETE` |
+| `/admin/chefs?page` | Bảng đầu bếp kèm số món phụ trách | `GET /api/chefs` |
+| `/admin/chefs/new` | Form thêm đầu bếp (`name`, `specialty`, `imageUrl`) | `POST /api/chefs` |
+| `/admin/chefs/:id` | Chi tiết đầu bếp và các món phụ trách | `GET /api/chefs/:id` |
+| `/admin/chefs/:id/edit` | Form sửa, điền sẵn từ DB | `GET /api/chefs/:id`; `PATCH /api/chefs/:id` |
+| `/admin/chefs/:id/delete` | Trang xác nhận; nêu số món sẽ chuyển thành "Chưa phân công" | `GET /api/chefs/:id`; `DELETE /api/chefs/:id` |
+| `/admin/ingredients?page` | Bảng nguyên liệu kèm số món đang dùng | `GET /api/ingredients` |
+| `/admin/ingredients/new` | Form thêm nguyên liệu, ô đơn vị gợi ý từ options | `GET /api/options`; `POST /api/ingredients` |
+| `/admin/ingredients/:id` | Chi tiết nguyên liệu và các món/định lượng dùng nó | `GET /api/ingredients/:id` |
+| `/admin/ingredients/:id/edit` | Form sửa nguyên liệu | `GET /api/ingredients/:id` + options; `PATCH /api/ingredients/:id` |
+| `/admin/ingredients/:id/delete` | Trang xác nhận; nêu số món sẽ bị gỡ khỏi công thức | `GET /api/ingredients/:id`; `DELETE /api/ingredients/:id` |
 | `*` | Trang không tìm thấy | — |
 
 Toàn bộ trạng thái bộ lọc (`q`, `category`, `sort`, `page`, `show`) nằm trong URL search
@@ -484,6 +507,15 @@ sách; không tải lại document.
 2. Nút "Xác nhận xóa" mới gửi `DELETE /api/dishes/:id`.
 3. API trả `data: null`; SPA chuyển về `/admin/dishes`.
 
+**Quản trị đầu bếp và nguyên liệu** (`/admin/chefs`, `/admin/ingredients`)
+
+1. Trang danh sách gọi `GET /api/chefs` hoặc `GET /api/ingredients` với `page` và `pageSize=10`,
+   nhận `data` + `meta` để vẽ bảng và thanh phân trang.
+2. Form thêm/sửa gửi `POST` hoặc `PATCH` với body JSON (`name`, `specialty`, `imageUrl` cho đầu
+   bếp; `name`, `unit` cho nguyên liệu). Lỗi validate hiện dưới từng ô y như form món ăn.
+3. Trang chi tiết đọc lại bản ghi theo `id`, kèm danh sách món liên quan; trang xóa chỉ gửi
+   `DELETE` khi bấm "Xác nhận xóa".
+
 **Đặt bàn**
 
 1. Form gửi `name`, `phone`, `guests`, `date`, `time`, `note` dạng JSON.
@@ -517,6 +549,7 @@ kiện hiển thị; `NOT_FOUND` chỉ dành cho bản ghi không tồn tại.
 | --- | --- | --- |
 | `/dishes` | 9 (lưới 3 × 3) | `q`, `category`, `sort` |
 | `/admin/dishes` | 10 | `sort` |
+| `/admin/chefs`, `/admin/ingredients` | 10 | `page` |
 | `GET /api/chefs` | 10 mặc định | `pageSize` |
 | `GET /api/ingredients` | 10 mặc định | `pageSize` |
 
@@ -587,7 +620,9 @@ npm test            # app.test.js, validators.test.js, helpers.test.js
 ```
 
 Các test này không cần database: phần HTTP dùng `createApp` trên cổng ngẫu nhiên, phần
-validator/helper là hàm thuần.
+validator/helper là hàm thuần. Phần HTTP có thêm hai ca `413` (body quá lớn) và `415`
+(charset không hỗ trợ) để chắc rằng lỗi đọc body vẫn giữ đúng status thay vì thành `500`;
+phần helper có ca `parseId` với id vượt giới hạn `INT4`.
 
 ```bash
 cd web
@@ -677,8 +712,9 @@ Mở DevTools → Network:
 - Dừng API rồi tải lại trang → khung "Không tải được dữ liệu" + nút "Thử lại".
 - Mở `/dishes/999999` → khung 404 của SPA. Network hiện status `200` vì đây là lỗi nghiệp vụ;
   kiểm tra body có `ok: false` và `code: NOT_FOUND`.
-- Quản trị món ăn: thêm/sửa/xóa không tải lại document; Network chỉ có request JSON tương ứng.
-- Trang xóa: chỉ khi bấm "Xác nhận xóa" mới có request `DELETE`.
+- Quản trị món ăn, đầu bếp, nguyên liệu: thêm/sửa/xóa không tải lại document; Network chỉ có
+  request JSON tương ứng.
+- Trang xóa của cả ba tài nguyên: chỉ khi bấm "Xác nhận xóa" mới có request `DELETE`.
 - Gửi trùng nút submit: nút bị vô hiệu trong lúc chờ nên chỉ có một request.
 - Đặt bàn: sau khi gửi, URL chuyển thành `/bookings/<mã 8 ký tự hex>`.
 - Đổi trạng thái đặt bàn ở `/admin/bookings` → có `PATCH /api/admin/bookings/:id`, danh sách
@@ -707,18 +743,18 @@ Kết quả mong đợi: `204`, `Access-Control-Allow-Origin: http://localhost:5
 | SPA: thực đơn, chi tiết món, giới thiệu | Đã có |
 | SPA: đặt bàn cho khách, xác nhận theo mã | Đã có |
 | SPA: quản trị món ăn (danh sách, thêm, chi tiết, sửa, xóa) | Đã có |
+| SPA: quản trị đầu bếp (danh sách, thêm, chi tiết, sửa, xóa) | Đã có |
+| SPA: quản trị nguyên liệu (danh sách, thêm, chi tiết, sửa, xóa) | Đã có |
 | SPA: quản trị đặt bàn | Đã có |
-| SPA: quản trị đầu bếp và nguyên liệu | **Chưa có trang**. API đã sẵn sàng, nhưng `router.jsx` chưa khai báo route `/admin/chefs`, `/admin/ingredients` |
 | Đăng nhập / phân quyền | **Không có**. Mọi endpoint quản trị đều công khai, nằm ngoài phạm vi bài này; không dùng cho production |
 | Test | Unit test cho API và API client; acceptance script cần API chạy. Không có test end-to-end trình duyệt |
-| Thư mục `evidence/` | **Chưa có** trong repository hiện tại |
+| Thư mục `evidence/` | Đã có thư mục (kèm `.gitkeep`) nhưng **chưa có ảnh/video minh chứng** |
 
 Các điểm cần biết thêm:
 
-- Menu quản trị trong `web/src/components/Layout.jsx` có liên kết tới `/admin/chefs` và
-  `/admin/ingredients`; vì chưa có route, hai liên kết này hiện rơi vào trang `*` (không tìm
-  thấy). Trang chi tiết món cũng trỏ tới `/admin/chefs/:id` và `/admin/ingredients/:id` với
-  cùng kết quả.
+- Xóa đầu bếp không xóa món: các món chuyển thành "Chưa phân công". Xóa nguyên liệu chỉ gỡ nó
+  khỏi công thức của món, món ăn vẫn còn. Hai trang xác nhận đều nêu rõ hệ quả này trước khi
+  người dùng bấm nút.
 - API không có endpoint xóa đặt bàn; nhân viên chỉ đổi trạng thái.
 - Không có lịch sử migration: project dùng `prisma db push`. Khi triển khai thật nên chuyển
   sang `prisma migrate`.
