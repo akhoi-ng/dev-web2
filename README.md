@@ -1,22 +1,30 @@
-# Lửa Hồng - Quản lý Nhà hàng dạng server-side rendering
+# Lửa Hồng - REST API và SPA
 
-Báo cáo bài tập Block 5 ("SSR với database và ORM") của nhóm. Ứng dụng là **một server
-Express duy nhất**: dựng HTML ở server bằng EJS và đọc ghi PostgreSQL trên Supabase qua
-Prisma ORM. Luồng xử lý của mọi request, theo mental model của buổi học:
+Báo cáo Block 6 ("REST API và SPA") của nhóm. Ứng dụng nhà hàng được tách thành **hai
+package trong cùng repository**:
 
-Browser → Router → Handler (đọc params, query, body; validate) → Model (Prisma) → PostgreSQL
-→ Template (EJS) → HTML về browser. Thao tác ghi kết thúc bằng `res.redirect(303)` thay vì
-render.
+- `api/`: server Express chỉ trả **JSON**. Router → handler → validator → Prisma →
+  PostgreSQL (Supabase). Không render HTML.
+- `web/`: ứng dụng React chạy trong trình duyệt (SPA), định tuyến bằng React Router, gọi API
+  qua `fetch` và tự dựng giao diện.
 
-Trình duyệt **không gửi dữ liệu bằng JavaScript**. Mọi thao tác đi qua thẻ `<a>` (GET) hoặc
-`<form>` HTML (POST, và PATCH, DELETE qua `method-override`). Ứng dụng có hai phân hệ:
+Hai ứng dụng chạy ở **hai origin khác nhau** (mặc định `http://localhost:3000` và
+`http://localhost:5173`), nên API bật CORS theo danh sách origin cấu hình trong `.env`.
 
-- **Khách hàng** (`/dishes`): chỉ đọc. Xem thực đơn, tìm theo tên, lọc theo danh mục, sắp
-xếp, phân trang, xem chi tiết món.
-- **Quản trị** (`/admin/`*): CRUD đầy đủ cho 3 đối tượng: Món ăn, Đầu bếp, Nguyên liệu.
+Luồng của một trang:
 
-Stack: Node.js, Express 4, EJS 3, Prisma 6, PostgreSQL (Supabase), `method-override`,
-Tailwind CSS (CDN).
+```text
+React Router (web) → useApiData → API client (fetch) → Express router (api)
+→ handler đọc params/query/body → validator → Prisma → PostgreSQL
+→ JSON { ok, data, meta? } → component render
+```
+
+Thao tác ghi đi qua `fetch` với `POST` / `PATCH` (body JSON) hoặc `DELETE` (không body), rồi
+SPA chuyển trang bằng điều hướng phía client (không tải lại cả document).
+
+> **Phạm vi giao diện hiện tại:** SPA đã có đầy đủ trang khách, trang quản trị **món ăn** và
+> trang quản trị **đặt bàn**. API đã có CRUD cho **đầu bếp** và **nguyên liệu**, nhưng SPA
+> chưa có trang quản trị cho hai đối tượng này. Chi tiết ở mục 13.
 
 ## 1. Thông tin nhóm
 
@@ -27,441 +35,472 @@ Tailwind CSS (CDN).
 | 3 | Trần Nguyễn Tuấn Minh | 24127084 |
 | 4 | Nguyễn Anh Khôi | 24127430 |
 
-## 2. Yêu cầu đề bài
+## 2. Phạm vi bài làm
 
-Câu hỏi của buổi học: *Server tổ chức các trang và xử lý CRUD thế nào để UI luôn phản ánh
-đúng dữ liệu trong database?*
-
-Mục tiêu (slide "Mục tiêu"):
-
-- Nối ứng dụng với database Supabase.
-- So sánh SQL thô, query builder, ORM và truy vấn qua model.
-- Chọn `params`, `query` hay `form` (body) để truyền dữ liệu giữa các trang.
-- Dùng `POST`, `PATCH`, `DELETE` để ghi dữ liệu rồi redirect, không dùng `GET`.
-
-Bài tập: xây ứng dụng nhà hàng gồm (a) trang người dùng xem món ăn, (b) trang quản trị CRUD
-món ăn, đầu bếp và nguyên liệu.
-
-| Mô tả trong slide | Trong project này |
+| Hạng mục | Cách project đáp ứng |
 | --- | --- |
-| Project Express và EJS, có `.env.example` và `.gitignore` chứa `.env` | `package.json`, `.env.example`, `.gitignore` (`.env`, `node_modules`) |
-| Mỗi nhóm một project Supabase, `DATABASE_URL` chỉ nằm trong `.env` | `.env` (không commit); code chỉ đọc qua `process.env` ở server |
-| Ba model `Dish`, `Chef`, `Ingredient` | `prisma/schema.prisma` (thêm bảng nối `DishIngredient`, xem mục 6) |
-| Script seed có dữ liệu cho cả ba bảng | `prisma/seed.js`: 51 món, 5 đầu bếp, 45 nguyên liệu |
+| Backend chỉ trả JSON | `api/src/http/respond.js` bọc mọi phản hồi của handler trong `{ ok, data, meta? }` hoặc `{ ok: false, error }` |
+| REST cho ba tài nguyên | `GET/POST /api/dishes`, `/api/chefs`, `/api/ingredients`; `GET/PATCH/DELETE /api/<res>/:id` |
+| SPA ở origin khác | `web/` chạy Vite cổng 5173, gọi `VITE_API_URL` (giá trị mẫu `http://localhost:3000`) |
+| CORS thật, không dùng proxy | `api/src/http/cors.js` chỉ cho các origin trong `CORS_ORIGIN`, không dùng `*` |
+| Giữ dữ liệu và nghiệp vụ của bài trước | Cùng schema Prisma, seed, quy tắc validate, quan hệ món – đầu bếp – nguyên liệu, đặt bàn |
+| Phân trang, lọc, sắp xếp | Query param trên `GET /api/dishes`; `?page` và `?pageSize` cho cả ba danh sách |
+| Trạng thái lỗi theo quy ước | Lỗi nghiệp vụ trả HTTP `200` với `ok: false`; lỗi giao thức trả `400`/`404`/`500` không có `ok` (mục 7) |
 
-Các trường gợi ý của slide đều được giữ:
+## 3. Công nghệ sử dụng
 
-| Model | Trường gợi ý | Trường nhóm thêm |
+| Phần | Dùng gì | Ghi chú |
 | --- | --- | --- |
-| `Dish` | `name`, `description`, `price`, `category`, `available` | `imageUrl`, `createdAt`, `chefId`, công thức (`ingredients`) |
-| `Chef` | `name`, `specialty` | `imageUrl`, `createdAt` |
-| `Ingredient` | `name`, `unit` | `createdAt` |
+| Runtime | Node.js 18 trở lên | Cần cho Vite 5 và `fetch`/`node:test` |
+| Web framework (API) | Express 4.21 | `express.json()` đọc body JSON; `asyncHandler` đưa lỗi async tới middleware 500 |
+| ORM | Prisma 6.16 | Code-first, `prisma db push`; một `PrismaClient` dùng chung |
+| Database | PostgreSQL trên Supabase | `DATABASE_URL` (pooler 6543) và `DIRECT_URL` (5432) |
+| CORS | `cors` 2.8 | Danh sách origin lấy từ `CORS_ORIGIN`, hỗ trợ nhiều origin cách nhau bằng dấu phẩy |
+| Biến môi trường | `dotenv` | API đọc `.env` khi khởi động; SPA dùng `import.meta.env.VITE_API_URL` |
+| Giao diện | React 18.3 + React Router 6.28 | `createBrowserRouter`, `NavLink`, `useSearchParams`; không dùng global store |
+| Build frontend | Vite 5.4 | Dev/preview cố định cổng 5173 (`strictPort: true`) |
+| CSS | Tailwind CSS 3.4 + PostCSS + Autoprefixer | Build thật, không dùng CDN; font Be Vietnam Pro nạp trong `web/index.html` |
+| Kiểm thử | `node:test` | Test API HTTP/validator/helper và test API client của SPA |
 
-Ràng buộc của trang quản trị (vi phạm là trượt nghiệm thu):
+## 4. Cấu trúc repository
 
-| # | Quy tắc | Cách project đáp ứng |
-| --- | --- | --- |
-| 1 | Thêm dùng `POST`, sửa dùng `PATCH`, xóa dùng `DELETE` | Form `POST`; sửa và xóa gửi `?_method=PATCH` / `?_method=DELETE` |
-| 2 | Không dùng `fetch`, AJAX hay JavaScript phía client để gửi dữ liệu | Không có `fetch`, `XMLHttpRequest`, `axios` trong `views/` (xem mục 14) |
-| 3 | Input sai trả `400`, giữ giá trị đã nhập | Render lại form với `values` đã gõ và danh sách lỗi |
-| 4 | Id sai hoặc không có trả `404` | `parseId()` rồi `findUnique()`; `null` thì `404` |
-| 5 | Thao tác thành công redirect `303`; xóa có trang xác nhận | `res.redirect(303, ...)`; link "Xóa" chỉ mở `GET /admin/:res/:id/delete` |
+```text
+api/                                  # Backend: chỉ JSON
+├── src/
+│   ├── server.js                     # nạp .env, cảnh báo thiếu CORS_ORIGIN, app.listen
+│   ├── app.js                        # CORS → JSON body → requireJson → routers → 404 → 500
+│   ├── db/prisma.js                  # một PrismaClient dùng chung (giữ trên globalThis khi dev)
+│   ├── http/
+│   │   ├── respond.js                # ok/fail/notFound/validationFailed/requireJson/404/500
+│   │   └── cors.js                   # đọc CORS_ORIGIN, cấu hình cors()
+│   ├── routes/
+│   │   ├── dishes.js                 # danh sách, chi tiết, tạo, sửa, xóa món
+│   │   ├── chefs.js                  # CRUD đầu bếp
+│   │   ├── ingredients.js            # CRUD nguyên liệu
+│   │   ├── bookings.js               # khách tạo và tra cứu đặt bàn theo mã
+│   │   ├── admin-bookings.js         # danh sách/đổi trạng thái đặt bàn
+│   │   ├── stats.js                  # số liệu đầu trang thực đơn
+│   │   └── options.js                # danh mục, kiểu sắp xếp, đơn vị, khung giờ đặt bàn
+│   └── utils/
+│       ├── helpers.js                # parseId, paginate, pageParams, todayInVietnam, asyncHandler...
+│       └── validators.js             # validateDish/Chef/Ingredient/Booking, hằng số dùng chung
+├── prisma/
+│   ├── schema.prisma                 # Dish, Chef, Ingredient, DishIngredient, Booking
+│   └── seed.js                       # xóa dữ liệu cũ rồi nạp 51 món, 5 đầu bếp, 45 nguyên liệu
+├── test/
+│   ├── app.test.js                   # response shape, 400/404, CORS, preflight
+│   ├── validators.test.js            # luật validate và chế độ PATCH một phần
+│   └── helpers.test.js               # parseId, paginate, pageParams, ngày giờ Việt Nam
+├── scripts/acceptance.mjs            # chạy toàn bộ bảng REST + CORS + đặt bàn
+├── requests.http                     # request mẫu cho REST Client của IDE
+├── .env.example
+└── package.json
 
-## 3. Cách chạy
+web/                                  # Frontend: React SPA
+├── src/
+│   ├── main.jsx                      # createRoot + RouterProvider
+│   ├── router.jsx                    # toàn bộ route SPA
+│   ├── api/
+│   │   ├── client.js                 # nơi DUY NHẤT gọi fetch; phân loại lỗi
+│   │   ├── client.test.js            # test client bằng fetch giả
+│   │   └── index.js                  # dishesApi, chefsApi, ingredientsApi, bookingsApi...
+│   ├── hooks/
+│   │   ├── useApiData.js             # tải dữ liệu, huỷ request cũ, trạng thái + retry
+│   │   ├── useSubmit.js              # chặn gửi đúp, gom fieldErrors/formError
+│   │   └── useDocumentTitle.js
+│   ├── components/                   # Layout, Pagination, DataStatus, FieldError, ảnh/avatar...
+│   ├── pages/
+│   │   ├── MenuPage.jsx              # thực đơn: tìm, lọc, sắp xếp, phân trang
+│   │   ├── DishPage.jsx              # chi tiết món + đầu bếp + công thức
+│   │   ├── AboutPage.jsx
+│   │   ├── NotFoundPage.jsx, RouteErrorPage.jsx
+│   │   ├── bookings/                 # form đặt bàn, trang xác nhận
+│   │   └── admin/
+│   │       ├── bookings/             # danh sách và đổi trạng thái
+│   │       └── dishes/               # danh sách, thêm, chi tiết, sửa, xóa
+│   └── lib/                          # format giá/ngày/điện thoại, thông tin nhà hàng
+├── index.html
+├── vite.config.js
+├── tailwind.config.js
+├── postcss.config.js
+├── .env.example
+└── package.json
 
-Yêu cầu: Node.js 18 trở lên và một project Supabase.
-
-```bash
-npm install
-cp .env.example .env
+docs/superpowers/                     # spec và plan của Block 6
+README.md
+.gitignore                            # node_modules/, .env, dist/
 ```
 
-Mở `.env` và điền chuỗi kết nối (Supabase → nút **Connect**):
+Không còn thư mục `views/`, template EJS, `method-override` hay `src/` ở thư mục gốc. Mọi
+lệnh cài đặt/chạy phải thực hiện **trong `api/` hoặc `web/`**; thư mục gốc không có
+`package.json`.
 
-| Biến | Dùng cho | Cổng |
-| --- | --- | --- |
-| `DATABASE_URL` | Ứng dụng khi chạy: pooler, Transaction mode, có `?pgbouncer=true` | 6543 |
-| `DIRECT_URL` | `prisma db push`: Session pooler (cần để tạo bảng) | 5432 |
-| `PORT` | Cổng của server Express (mặc định 3000) | |
+## 5. Cài đặt và chạy
 
-Slide hướng dẫn dùng **Session pooler cổng 5432** cho `DATABASE_URL`. Nhóm tách thành hai
-biến: ứng dụng dùng Transaction pooler (6543) để không giữ kết nối lâu, còn `db push` cần
-Session mode nên đi qua `DIRECT_URL` (5432). Nếu chỉ có một chuỗi Session pooler, gán cùng
-chuỗi đó cho cả hai biến (bỏ `?pgbouncer=true`) cũng chạy được.
+### 5.1. Chuẩn bị
 
-Tạo bảng (Code-first), nạp dữ liệu mẫu, rồi chạy server:
+- Node.js 18 trở lên (`node --version`).
+- Một project Supabase đã tạo, lấy chuỗi kết nối ở **Connect**.
+
+### 5.2. API (`api/`)
+
+```bash
+cd api
+npm install
+cp .env.example .env          # PowerShell: Copy-Item .env.example .env
+```
+
+Mở `api/.env` và điền:
+
+| Biến | Dùng cho |
+| --- | --- |
+| `DATABASE_URL` | Ứng dụng khi chạy. Supabase **Transaction pooler**, cổng `6543`, có `?pgbouncer=true` |
+| `DIRECT_URL` | `prisma db push`. Supabase **Session pooler**, cổng `5432` |
+| `PORT` | Cổng Express, mặc định `3000` |
+| `CORS_ORIGIN` | Origin của SPA. `.env.example` đặt `http://localhost:5173`. Không có `/` ở cuối; nhiều origin cách nhau bằng dấu phẩy |
+
+Nếu chỉ có một chuỗi Session pooler, có thể gán cùng chuỗi cho cả `DATABASE_URL` và
+`DIRECT_URL` (bỏ `?pgbouncer=true`) để chạy được.
+
+Tạo bảng, nạp dữ liệu mẫu, chạy server:
 
 ```bash
 npx prisma db push
-npx prisma db seed
+npm run db:seed
 npm run dev
 ```
 
-Mở `http://localhost:3000/`.
+`npm run dev` dùng `node --watch`. API chạy tại `http://localhost:3000`; kiểm tra nhanh:
+
+```bash
+curl -i http://localhost:3000/api/dishes
+```
+
+### 5.3. SPA (`web/`)
+
+Mở terminal thứ hai:
+
+```bash
+cd web
+npm install
+cp .env.example .env          # PowerShell: Copy-Item .env.example .env
+npm run dev
+```
+
+`web/.env`:
+
+| Biến | Dùng cho |
+| --- | --- |
+| `VITE_API_URL` | Base URL của API. `.env.example` đặt `http://localhost:3000`. Đây là biến công khai, không đặt bí mật ở đây |
+
+Mở `http://localhost:5173/`. Nếu `CORS_ORIGIN` không khớp chính xác origin của SPA (kể cả
+cổng), trình duyệt sẽ chặn request và SPA hiện khung "Không tải được dữ liệu".
+
+### 5.4. Script
+
+**`api/package.json`**
 
 | Script | Nhiệm vụ |
 | --- | --- |
-| `npm run dev` | Chạy server với `node --watch` (tự khởi động lại khi sửa code) |
-| `npm start` | Chạy server bình thường |
-| `npm run db:push` | `prisma db push`: đồng bộ `schema.prisma` lên database (Code-first) |
-| `npm run db:seed` | `prisma db seed`: **xóa toàn bộ dữ liệu cũ** rồi nạp 51 món, 5 đầu bếp, 45 nguyên liệu |
-| `postinstall` | Tự chạy `prisma generate` sau `npm install` để sinh Prisma Client |
+| `npm run dev` | `node --watch src/server.js` |
+| `npm start` | `node src/server.js` |
+| `npm run db:push` | `prisma db push` (đồng bộ schema, Code-first) |
+| `npm run db:seed` | `prisma db seed` → `node prisma/seed.js`, **xóa dữ liệu cũ** rồi nạp lại |
+| `npm test` | `node --test "test/**/*.test.js"` |
+| `npm run acceptance` | Chạy `scripts/acceptance.mjs` (cần API đang chạy) |
+| `postinstall` | `prisma generate` sau `npm install` |
 
-Vì seed luôn xóa trước khi nạp, chạy lại `npm run db:seed` trước khi quay video hoặc nộp bài
-để database về đúng trạng thái ban đầu.
+**`web/package.json`**
 
-## 4. Công nghệ sử dụng
+| Script | Nhiệm vụ |
+| --- | --- |
+| `npm run dev` | Vite dev server, cổng 5173 |
+| `npm run build` | Build production vào `web/dist/` |
+| `npm run preview` | Xem bản build, cổng 5173 |
+| `npm test` | `node --test "src/**/*.test.js"` |
 
-| Phần | Dùng gì | Vì sao |
-| --- | --- | --- |
-| Web framework | Express 4 | Starter của lớp. Thấy rõ thứ tự middleware và cách khớp method + path. Handler async được bọc bằng `asyncHandler` để lỗi đi tới middleware `500` (Express 4 không tự làm). |
-| Template engine | EJS 3 | `<%= %>` **tự escape** (chống XSS); `include()` tách header, footer, form dùng chung. |
-| Database | PostgreSQL trên Supabase | Theo đề bài; không phải cài database server. |
-| ORM | Prisma 6 | Khai báo model trong `schema.prisma`, `db push` tạo bảng (Code-first). Truy vấn bằng hàm của model nên giá trị luôn được tham số hóa. Bản 7 bắt buộc `prisma.config.ts` và driver adapter, khác cách cấu hình trong bài, nên dùng bản 6. |
-| PATCH và DELETE từ form | `method-override` | Form HTML chỉ gửi `GET`/`POST`. `methodOverride("_method")` đọc `?_method=` của request `POST` và đổi `req.method`. |
-| Đọc body form | `express.urlencoded({ extended: false })` | Thiếu middleware này thì `req.body` là `undefined`. |
-| Giao diện | Tailwind CSS qua CDN, font Be Vietnam Pro | Không cần bước build CSS. Chỉ tạo style, không gửi dữ liệu. Màu thương hiệu `brand` (đỏ #B8321C), `cream`, `ink` khai báo một lần trong `header.ejs`. |
-| Biến môi trường | `dotenv` | Đọc `DATABASE_URL` từ `.env`. |
+> `npm run db:seed` xóa **cả đặt bàn** cùng dữ liệu món, đầu bếp, nguyên liệu trước khi nạp
+> lại. Chỉ chạy khi muốn đưa database về trạng thái demo.
 
-Phương án khác đã cân nhắc và cái giá của từng lựa chọn: xem mục 11.
-
-### Vì sao chọn ORM: so sánh ba cách truy cập DB (slide "Trade-off")
-
-Cả ba cách dưới đây lấy cùng một dòng của bảng `dishes`, đều chạy trên server và đều truyền
-`id` dạng tham số thay vì nối chuỗi SQL:
-
-```js
-// 1. SQL thô với pg
-const { rows } = await pool.query("SELECT * FROM dishes WHERE id = $1", [id]);
-// 2. Query builder (knex)
-const dish = await knex("dishes").where({ id }).first();
-// 3. ORM (Prisma) — cách project dùng
-const dish = await prisma.dish.findUnique({ where: { id } });
-```
-
-| Giải pháp | Được | Mất |
-| --- | --- | --- |
-| SQL thô (`pg`) | Thấy chính xác SQL nào chạy; không thêm thư viện | Lặp lại nhiều; sai tên cột chỉ lộ khi chạy |
-| Query builder (`knex`) | Ghép điều kiện động bằng hàm | Vẫn phải hiểu SQL |
-| ORM (Prisma) | Model và object thay cho bảng và dòng; có quan hệ, migration | Thêm khái niệm; không thấy ngay SQL sinh ra |
-
-Nhóm chọn Prisma vì dữ liệu có quan hệ (món – đầu bếp, món – nguyên liệu) và cần lọc, sắp
-xếp, phân trang động. Project **không có** `$queryRaw` hay `$queryRawUnsafe`, nên không có
-chỗ nào nối giá trị người dùng vào chuỗi SQL.
-
-### Code-first
-
-| | Code-first (project dùng) | DB-first |
-| --- | --- | --- |
-| Nguồn của schema | `prisma/schema.prisma` trong repository | Bảng đã có trong database |
-| Lệnh Prisma | `prisma db push` (hoặc `prisma migrate dev`) | `prisma db pull` |
-| Khi nào dùng | Bắt đầu dự án từ đầu | Database đã tồn tại hoặc do nhóm khác quản lý |
-
-## 5. Cấu trúc
-
-```text
-.env.example                    # mẫu biến môi trường (không chứa mật khẩu thật)
-.gitignore                      # bỏ qua .env và node_modules
-package.json                    # script + cấu hình prisma.seed
-prisma/
-├── schema.prisma               # MODEL: Dish, Chef, Ingredient, DishIngredient
-└── seed.js                     # dữ liệu mẫu cho cả ba bảng + công thức
-src/
-├── server.js                   # nạp .env, app.listen(PORT)
-├── app.js                      # middleware theo thứ tự, gắn router, 404, 500
-├── db/
-│   └── prisma.js               # một PrismaClient dùng chung toàn ứng dụng
-├── utils/
-│   ├── helpers.js              # RESTAURANT (tên, giờ mở cửa, hotline, địa chỉ), parseId, paginate, str, asyncHandler, formatPrice...
-│   └── validators.js           # validateDish/Chef/Ingredient, *ToValues, DISH_CATEGORIES, DISH_SORTS
-└── routes/
-    ├── dishes.js               # KHÁCH: GET /dishes, GET /dishes/:id
-    ├── bookings.js             # KHÁCH: form đặt bàn, POST /bookings, trang xác nhận
-    ├── about.js                # KHÁCH: GET /about (Về chúng tôi)
-    └── admin/
-        ├── dishes.js           # QUẢN TRỊ: 8 route CRUD /admin/dishes
-        ├── chefs.js            # QUẢN TRỊ: 8 route CRUD /admin/chefs
-        ├── ingredients.js      # QUẢN TRỊ: 8 route CRUD /admin/ingredients
-        └── bookings.js         # QUẢN TRỊ: danh sách đặt bàn, đổi trạng thái
-views/                          # TEMPLATE: chỉ quyết định dữ liệu trông thế nào
-├── partials/
-│   ├── header.ejs              # <head>, bảng màu thương hiệu, navbar Khách / Quản trị
-│   ├── footer.ejs              # footer: thực đơn theo danh mục, hỗ trợ, liên hệ
-│   ├── logo.ejs                # logo Lửa Hồng (SVG)
-│   ├── form-errors.ejs         # khung lỗi đỏ trên đầu form (400)
-│   ├── page-heading.ejs        # tiêu đề trang + link quay lại
-│   ├── pagination.ejs          # thanh phân trang dùng chung (‹ 1 … 4 5 [6] 7 8 … 20 ›)
-│   └── chef-avatar.ejs         # ảnh đầu bếp, hoặc chữ cái đầu nếu không có ảnh
-├── dishes/
-│   ├── index.ejs               # trang chủ + thực đơn: tìm kiếm, ô danh mục, lọc, sắp xếp, phân trang, đặt bàn
-│   └── show.ejs                # chi tiết món: đầu bếp, công thức
-├── bookings/
-│   ├── new.ejs                 # form đặt bàn
-│   └── show.ejs                # xác nhận mã đặt bàn + trạng thái
-├── about.ejs                   # Về chúng tôi
-├── admin/
-│   ├── dishes/                 # index, new, edit, _form, show, delete
-│   ├── chefs/                  # index, new, edit, _form, show, delete
-│   ├── ingredients/            # index, new, edit, _form, show, delete
-│   └── bookings/               # index (danh sách đặt bàn, đổi trạng thái)
-└── errors/
-    ├── 404.ejs
-    └── 500.ejs
-```
-
-Mỗi đối tượng quản trị dùng **một** `_form.ejs` chung cho trang thêm (`new.ejs`) và trang
-sửa (`edit.ejs`). Hai trang chỉ khác `action` của form và nhãn nút.
-
-Ranh giới trách nhiệm (speaker note slide "Mental model"): **handler quyết định lấy dữ liệu
-nào**, **template chỉ quyết định dữ liệu trông thế nào**. Template không gọi Prisma và không
-nhận `prisma` hay `process.env`.
-
-## 6. Thiết kế database (`prisma/schema.prisma`)
+## 6. Thiết kế database (`api/prisma/schema.prisma`)
 
 Mỗi model là một bảng, mỗi trường là một cột. Khóa chính `Int @id @default(autoincrement())`
-do database sinh. `@@map` đặt tên bảng thật là chữ thường số nhiều. `String?` cho phép `null`.
+do database sinh; `@@map` đặt tên bảng thật là chữ thường số nhiều.
 
 | Model | Bảng | Trường |
 | --- | --- | --- |
 | `Dish` | `dishes` | `id`, `name`, `description?`, `price` (Int, VNĐ), `category?`, `imageUrl?`, `available` (mặc định `true`), `createdAt`, `chefId?` |
 | `Chef` | `chefs` | `id`, `name`, `specialty`, `imageUrl?`, `createdAt` |
 | `Ingredient` | `ingredients` | `id`, `name`, `unit`, `createdAt` |
-| `DishIngredient` | `dish_ingredients` | `dishId`, `ingredientId`, `quantity` (Float); khóa chính `(dishId, ingredientId)` |
-| `Booking` | `bookings` | `id`, `code` (unique, 8 ký tự hex ngẫu nhiên), `name`, `phone`, `guests`, `bookedAt` (DateTime), `note?`, `status` (`pending`/`confirmed`/`cancelled`), `createdAt` |
+| `DishIngredient` | `dish_ingredients` | `dishId`, `ingredientId`, `quantity` (Float); khóa chính `(dishId, ingredientId)`; index `ingredientId` |
+| `Booking` | `bookings` | `id`, `code` (unique, 8 ký tự hex ngẫu nhiên), `name`, `phone`, `guests`, `bookedAt` (DateTime), `note?`, `status` (`pending`/`confirmed`/`cancelled`), `createdAt`; index `bookedAt` |
 
-`price` là số nguyên vì tiền VNĐ không có phần lẻ, tránh sai số của số thực.
+`price` là số nguyên vì tiền VNĐ không có phần lẻ. `status` là `String` có giá trị mặc định
+`pending`; danh sách trạng thái hợp lệ được kiểm tra ở validator, không phải kiểu enum của
+database.
 
-### Quan hệ (phần nhóm làm thêm)
+### Quan hệ và hành vi khi xóa
 
-Speaker note của slide "Dữ liệu" ghi: ba đối tượng độc lập, quan hệ giữa chúng không thuộc
-yêu cầu. Nhóm **thêm** quan hệ để trang chi tiết có nội dung thật, nhưng vẫn giữ đủ trường
-gợi ý và CRUD riêng cho từng đối tượng:
-
-| Quan hệ | Cách khai báo | Khi xóa |
+| Quan hệ | Khai báo | Khi xóa |
 | --- | --- | --- |
-| Món ăn → Đầu bếp phụ trách (nhiều – một) | `Dish.chefId` → `Chef.id` | Xóa đầu bếp: món còn lại, `chefId = null` (`onDelete: SetNull`). Trang xác nhận xóa báo số món bị ảnh hưởng |
-| Món ăn ↔ Nguyên liệu (nhiều – nhiều, có định lượng) | Bảng nối `DishIngredient` | Xóa món hoặc nguyên liệu: dòng trong bảng nối bị xóa theo (`onDelete: Cascade`), món và nguyên liệu kia vẫn còn |
+| Món ăn → đầu bếp (nhiều – một) | `Dish.chefId` → `Chef.id`, `onDelete: SetNull` | Xóa đầu bếp: món vẫn còn, `chefId = null`; giao diện hiện "Chưa phân công" |
+| Món ăn ↔ nguyên liệu (nhiều – nhiều, có định lượng) | Bảng nối `DishIngredient`, `onDelete: Cascade` ở cả hai khóa ngoại | Xóa món hoặc nguyên liệu: các dòng công thức liên quan bị xóa theo |
 
-### Dữ liệu mẫu (`prisma/seed.js`)
+### Dữ liệu mẫu (`api/prisma/seed.js`)
 
 | Bảng | Số bản ghi | Ghi chú |
 | --- | --- | --- |
-| `dishes` | 51 | Khai vị 9, Món chính 15, Món phụ 9, Tráng miệng 9, Đồ uống 9. Pizza Margherita đặt "tạm hết" |
-| `chefs` | 5 | Bếp trưởng món Á, Steak & Món Âu, Bếp trưởng điều hành, Bếp món Ý, Bếp bánh ngọt |
-| `ingredients` | 45 | Thăn bò Wagyu (kg), Mỳ spaghetti (gram), Kem tươi (ml), Trứng gà (quả)... |
+| `dishes` | 51 | Khai vị 9, Món chính 15, Món phụ 9, Tráng miệng 9, Đồ uống 9. Pizza Margherita đặt `available: false` |
+| `chefs` | 5 | Bếp Á, steak/món Âu, bếp trưởng điều hành, bếp Ý, bếp bánh ngọt |
+| `ingredients` | 45 | Đơn vị như kg, gram, ml, bó, quả, ổ... |
 | `dish_ingredients` | Mỗi món 1 đến 5 dòng | Công thức cho một phần ăn |
+| `bookings` | 0 | Seed xóa toàn bộ đặt bàn cũ |
 
-## 7. Truyền dữ liệu giữa các trang: params, query, body
+Seed xóa theo thứ tự `bookings` → `dish_ingredients` → `dishes` → `chefs` → `ingredients`,
+nên chạy lại bao nhiêu lần cũng ra cùng một trạng thái.
 
-Mỗi request là một request mới; server không nhớ trang trước vừa hiển thị gì. Vì vậy thông
-tin cần thiết phải nằm trong chính request, ở đúng chỗ:
+## 7. Hợp đồng phản hồi của API
 
-| Nơi | Dùng cho | Ví dụ trong project |
-| --- | --- | --- |
-| `req.params` | Cho biết **bản ghi nào** | `/dishes/2` → `{ id: "2" }`; `/admin/chefs/3/edit` |
-| `req.query` | **Điều kiện hiển thị**: tìm, lọc, sắp xếp, trang | `/dishes?q=phở&category=Món chính&sort=price-asc&page=2` |
-| `req.body` | **Nội dung cần ghi** | Form POST: `name=...&price=...&chefId=...` |
+### 7.1. Hình dạng JSON
 
-Trang sửa món cần cả hai: `id` từ params cho biết sửa món nào, nội dung mới từ body.
+Thành công:
 
-### Truyền id, đọc lại từ database
-
-Link từ trang danh sách chỉ mang `id` (`<a href="/dishes/<%= d.id %>">`). Trang chi tiết
-**đọc lại** món từ database ở mỗi request, không nhận cả object từ trang trước. Nhờ đó mở
-thẳng `/dishes/2` ở tab mới, gửi link cho người khác, Reload hay Back đều ra đúng dữ liệu
-hiện tại.
-
-### Query giữ lại khi chuyển trang
-
-Ở `/dishes`, các điều kiện hiển thị đi cùng nhau: đổi danh mục giữ từ khóa và kiểu sắp xếp;
-chuyển trang giữ cả ba; đổi sắp xếp giữ từ khóa và danh mục. Hàm `filterHref()` và
-`pageHref()` trong `views/dishes/index.ejs` ghép các query này vào link. Vì mọi điều kiện nằm
-trong URL, link kết quả tìm kiếm lưu lại và gửi cho người khác được.
-
-### Lỗi thường gặp khi đọc request (slide "Lỗi thường gặp khi đọc dữ liệu từ request")
-
-| Lỗi | Project xử lý |
-| --- | --- |
-| `req.params.id` là chuỗi `"2"`, không phải số | `parseId()` đổi sang số và chỉ nhận số nguyên dương; sai thì `404`, không gọi Prisma |
-| `req.query.q` thành mảng khi URL là `?q=a&q=b` | `typeof req.query.q === "string" ? ... : ""`; tương tự cho `category` (`parseDishSort()` cho `sort`) |
-| Giá trị form là chuỗi, kể cả `type="number"` | Validator kiểm tra bằng regex rồi mới `Number()`: giá `/^\d+$/`, định lượng `/^\d+(\.\d+)?$/` |
-| Input thiếu `name` không xuất hiện trong request | Mọi input có `name`; checkbox `available` không gửi khi bỏ chọn nên được hiểu là `false` |
-
-## 8. Danh sách route
-
-Ứng dụng SSR nên các route trả về **HTML** hoặc redirect, không trả JSON.
-
-### 8.1. Trang người dùng (chỉ đọc)
-
-| Method | URL | Kết quả |
-| --- | --- | --- |
-| `GET` | `/` | `302` → `/dishes` |
-| `GET` | `/dishes` | `200`. 9 món mỗi trang, mỗi món có link sang trang chi tiết |
-| `GET` | `/dishes?q=phở` | Lọc `name` chứa `q`, không phân biệt hoa thường; ô tìm kiếm giữ lại `q` |
-| `GET` | `/dishes?category=Tráng miệng` | Lọc theo danh mục; giá trị lạ coi như "Tất cả" |
-| `GET` | `/dishes?sort=price-asc` | Sắp xếp: `default`, `newest`, `price-asc`, `price-desc`, `name-asc`; giá trị lạ coi như `default` |
-| `GET` | `/dishes?page=2` | Phân trang; số trang sai thành 1, vượt quá thành trang cuối |
-| `GET` | `/dishes/:id` | `200` chi tiết (đủ các trường, đầu bếp, công thức), hoặc `404` khi id sai / không có |
-| `GET` | `/about` | `200`. Về chúng tôi: giới thiệu, lý do chọn nhà hàng, đội ngũ đầu bếp (đọc từ DB), địa chỉ |
-| `GET` | `/bookings/new` | `200`. Form đặt bàn |
-| `POST` | `/bookings` | Sai: `400` + form kèm lỗi và giá trị đã nhập. Đúng: tạo yêu cầu rồi `303` → `/bookings/:code` |
-| `GET` | `/bookings/:code` | `200` trang xác nhận đã nhận yêu cầu, hoặc `404` khi mã sai / không có |
-
-Trang xác nhận dùng `code` ngẫu nhiên thay cho `id`: `id` tăng dần nên ai cũng đoán được
-`/bookings/1`, `/bookings/2`… và xem được tên, số điện thoại của khách khác.
-
-Phần quản trị đặt bàn chỉ có hai route (yêu cầu do khách tạo, nhân viên chỉ đổi trạng thái):
-
-| Method | URL | Kết quả |
-| --- | --- | --- |
-| `GET` | `/admin/bookings` | `200`. Lịch từ hôm nay trở đi, sắp theo giờ; `?show=all` hiện cả lịch đã qua |
-| `PATCH` | `/admin/bookings/:id` (form `POST` tới `?_method=PATCH`, body `status=...`) | Đúng: `303` → `/admin/bookings`. Trạng thái lạ: `400`. Id sai / không có: `404` |
-
-### 8.2. Trang quản trị (bảng CRUD của slide)
-
-Cùng một bảng cho cả ba đối tượng, thay `:res` bằng `dishes`, `chefs` hoặc `ingredients`.
-`GET /admin` redirect sang `/admin/dishes`.
-
-| # | Thao tác | Method | URL | Kết quả |
-| --- | --- | --- | --- | --- |
-| 1 | Danh sách | `GET` | `/admin/:res` | `200`. Bảng dữ liệu, nút "+ Thêm mới", link Sửa, Xóa |
-| 2 | Mở form thêm | `GET` | `/admin/:res/new` | `200`. Form trống |
-| 3 | Thêm | `POST` | `/admin/:res` | `303` sang chi tiết, hoặc `400` |
-| 4 | Chi tiết | `GET` | `/admin/:res/:id` | `200` hoặc `404` |
-| 5 | Mở form sửa | `GET` | `/admin/:res/:id/edit` | `200` (điền sẵn từ DB) hoặc `404` |
-| 6 | Sửa | `PATCH` | `/admin/:res/:id` (form `POST` tới `?_method=PATCH`) | `303`, `400` hoặc `404` |
-| 7 | Xác nhận xóa | `GET` | `/admin/:res/:id/delete` | `200` hoặc `404` |
-| 8 | Xóa | `DELETE` | `/admin/:res/:id` (form `POST` tới `?_method=DELETE`) | `303` sang danh sách, hoặc `404` |
-
-Các trang danh sách quản trị nhận `?page=` (10 dòng mỗi trang, mục 10). `/admin/dishes`
-cũng nhận `?sort=` với cùng các lựa chọn như trang khách.
-
-Mỗi thao tác ghi đi cùng một trang `GET`: form thêm, form sửa, trang xác nhận xóa. Đích của
-redirect luôn là một URL mà `GET` mở được: sau thêm và sửa là trang chi tiết, sau xóa là danh
-sách (vì trang chi tiết không còn).
-
-### 8.3. Mã lỗi (slide "Mã lỗi")
-
-| Loại | Ví dụ | Status | Server làm |
-| --- | --- | --- | --- |
-| Input sai | `name` trống, `price` âm | `400` | Không ghi database; render lại form kèm lỗi và giá trị đã nhập |
-| Không tìm thấy | `/dishes/999`, `/dishes/abc`, URL không khớp route | `404` | `views/errors/404.ejs` có link về `/dishes` và `/admin/dishes` |
-| Lỗi hệ thống | Mất kết nối database | `500` | `console.error(err)` ở server; trang chung "Đã xảy ra lỗi hệ thống", không in `err.message` |
-
-### 8.4. Luật validate
-
-| Đối tượng | Trường | Luật |
-| --- | --- | --- |
-| Món ăn | `name` | Bắt buộc, tối đa 100 ký tự |
-| | `price` | Bắt buộc, chỉ gồm chữ số (`/^\d+$/`), tối đa 2 147 483 647 (`Int` của PostgreSQL). `-5`, `abc`, `1e3`, `10.5` bị từ chối |
-| | `category` | Để trống, hoặc một trong: Khai vị, Món chính, Món phụ, Tráng miệng, Đồ uống |
-| | `description` | Không bắt buộc, tối đa 1000 ký tự |
-| | `imageUrl` | Không bắt buộc; nếu có phải là URL `http://` hoặc `https://` (chặn `javascript:...`) |
-| | `available` | Checkbox: gửi `"on"` thì `true`, không gửi thì `false` |
-| | `chefId` | Để trống (chưa phân công), hoặc id của một đầu bếp đang tồn tại |
-| | Công thức | Mỗi nguyên liệu được chọn phải tồn tại và có định lượng > 0, tối đa 100 000; nhận cả `0,25` và `0.25` |
-| Đầu bếp | `name`, `specialty` | Bắt buộc, tối đa 100 / 150 ký tự |
-| | `imageUrl` | Như món ăn |
-| Nguyên liệu | `name`, `unit` | Bắt buộc, tối đa 100 / 20 ký tự. Ô đơn vị có gợi ý (`<datalist>`) |
-| Đặt bàn | `name` | Bắt buộc, tối đa 100 ký tự |
-| | `phone` | 10 chữ số, bắt đầu bằng 0; nhận cả `0123 456 789`, `0123.456.789` và lưu chỉ chữ số |
-| | `guests` | Số nguyên 1 đến 20 (nhóm đông hơn gọi hotline) |
-| | `date`, `time` | Ngày có thật, giờ thuộc khung 10:00 – 21:00 mỗi 30 phút; thời điểm phải ở tương lai và trong vòng 60 ngày. Tính theo giờ Việt Nam (UTC+7) |
-| | `note` | Không bắt buộc, tối đa 500 ký tự |
-
-## 9. Luồng dữ liệu
-
-### Đọc danh sách và tìm kiếm (`GET /dishes?q=...`)
-
-1. Người dùng gõ từ khóa vào `<form method="GET" action="/dishes">` và bấm **Tìm**. Form
-
-   dùng GET nên trình duyệt tự tạo URL `/dishes?q=phở` và gửi một document request.
-2. **Router** khớp `GET /dishes`. **Handler** lấy `q`, `category`, `sort`, `page` an toàn từ
-
-   `req.query`.
-3. **Model**: `prisma.dish.count({ where })` để tính số trang, rồi
-
-   `prisma.dish.findMany({ where, orderBy, include: { chef: true }, skip, take: 9 })`.
-    `q` rỗng thì `contains: ""` khớp tất cả.
-4. **Template**: `res.render("dishes/index", {...})`. EJS dựng HTML đầy đủ (card có ảnh, giá
-
-   VNĐ, trạng thái, đầu bếp) và gửi về. Ô tìm kiếm có `value="<%= q %>"` nên giữ từ khóa.
-
-### Thêm bản ghi (`POST /admin/dishes`)
-
-1. Người dùng điền form ở `/admin/dishes/new` rồi bấm **Thêm món ăn**. Trình duyệt gửi
-
-   `POST /admin/dishes`, body `application/x-www-form-urlencoded`.
-2. `express.urlencoded` đọc body vào `req.body`.
-3. **Handler** đọc danh sách đầu bếp, nguyên liệu rồi gọi `validateDish(req.body, options)`.
-   - Có lỗi: `res.status(400).render("admin/dishes/new", { values, errors, ... })`. Không ghi
-    DB; form hiện lại với khung lỗi đỏ và nội dung vừa gõ.
-   - Hợp lệ: `prisma.dish.create({ data: { ...data, ingredients: { create: recipe } } })`.
-   Món và công thức được tạo trong cùng một lệnh.
-4. `res.redirect(303, "/admin/dishes/" + created.id)`. `created.id` là id database vừa sinh.
-
-   Trình duyệt tự gửi `GET /admin/dishes/:id` và hiện trang chi tiết.
-
-### Sửa bản ghi (`PATCH /admin/dishes/:id`)
-
-1. Form ở trang sửa: `<form method="POST" action="/admin/dishes/3?_method=PATCH">`.
-2. `methodOverride("_method")` (đặt **trước** router) đổi `req.method` thành `PATCH`, nên
-
-   `router.patch("/:id")` khớp.
-3. Handler: id hợp lệ → bản ghi tồn tại (`404`) → dữ liệu hợp lệ (`400`) →
-
-   `prisma.dish.update` (thay toàn bộ công thức cũ bằng công thức mới) → `303` về trang chi
-    tiết.
-
-### Xóa bản ghi (`DELETE /admin/dishes/:id`)
-
-1. Link "Xóa" trong bảng là `GET /admin/dishes/3/delete`: **chỉ mở trang xác nhận**.
-2. Trang xác nhận có `<form method="POST" action="/admin/dishes/3?_method=DELETE">` với nút
-
-   **Xác nhận xóa**, và link **Hủy** về danh sách.
-3. `method-override` đổi thành `DELETE`. Handler kiểm tra tồn tại (`404`), gọi
-
-   `prisma.dish.delete`, rồi `303` → `/admin/dishes`.
-
-## 10. Cơ chế phân trang
-
-Phân trang có ở bốn trang danh sách, cùng dùng một hàm `paginate()` và một partial
-`pagination.ejs`:
-
-| Trang | Số dòng mỗi trang | Query giữ lại khi chuyển trang |
-| --- | --- | --- |
-| `/dishes` | 9 (lưới 3 cột × 3 hàng) | `q`, `category`, `sort` |
-| `/admin/dishes` | 10 | `sort` |
-| `/admin/chefs` | 10 | (không có) |
-| `/admin/ingredients` | 10 | (không có) |
-
-`/admin/bookings` không phân trang: mặc định chỉ hiện lịch từ hôm nay trở đi nên danh sách
-ngắn, và nhân viên cần thấy hết lịch sắp tới trên một trang.
-
-### Kiểu phân trang: offset (`skip` / `take`)
-
-Số trang nằm trong URL (`?page=3`). Server đổi nó thành `OFFSET` / `LIMIT` của SQL:
-
-```text
-skip = (page - 1) × pageSize        // bỏ qua bao nhiêu dòng
-take = pageSize                     // lấy bao nhiêu dòng
+```json
+{ "ok": true, "data": [] }
+{ "ok": true, "data": [], "meta": { "page": 1, "totalPages": 6, "total": 51, "pageSize": 9 } }
 ```
 
-Ví dụ `/dishes?page=3` với 9 món mỗi trang: `skip = 18`, `take = 9`, tức các món thứ 19 đến
-27 theo thứ tự sắp xếp đang chọn.
+Lỗi nghiệp vụ:
 
-### Các bước trong một request
+```json
+{ "ok": false, "error": { "code": "NOT_FOUND", "message": "Món ăn không tồn tại" } }
+{ "ok": false, "error": { "code": "VALIDATION_FAILED", "message": "Dữ liệu không hợp lệ",
+                          "fields": { "price": "Giá phải là số nguyên không âm (VNĐ)." } } }
+```
+
+`meta` chỉ có ở danh sách được phân trang; `fields` chỉ có khi `VALIDATION_FAILED`.
+
+### 7.2. Mã HTTP
+
+| Trường hợp | Status | Body |
+| --- | --- | --- |
+| Thành công, kể cả danh sách rỗng | `200` | `ok: true` |
+| Id sai định dạng, không tồn tại | `200` | `ok: false`, `NOT_FOUND` |
+| Dữ liệu gửi lên sai | `200` | `ok: false`, `VALIDATION_FAILED` + `fields` |
+| Route `/api/...` không khớp | `404` | `{ "message": "Không tìm thấy route" }`, **không có `ok`** |
+| `POST`/`PATCH` không gửi `Content-Type: application/json` | `400` | `{ "message": "Body phải là JSON (Content-Type: application/json)" }` |
+| JSON hỏng | `400` | `{ "message": "JSON không hợp lệ" }` |
+| Lỗi hệ thống (mất DB, bug) | `500` | `{ "message": "Lỗi hệ thống" }`; chi tiết chỉ ghi ở `console.error` |
+
+Điểm cần lưu ý: **không tìm thấy bản ghi không phải HTTP 404**. Đây là lỗi nghiệp vụ, trả
+`200` với `ok: false` và `error.code = "NOT_FOUND"`. SPA phân biệt hai loại này ở tầng API
+client (mục 9), nên vẫn hiện đúng trang "Không tìm thấy". Khi kiểm tra bằng `curl`, phải xem
+**body** chứ không chỉ status.
+
+### 7.3. Thứ tự middleware (`api/src/app.js`)
 
 ```js
-// 1. Đếm số bản ghi khớp bộ lọc (cùng `where` với bước 3)
-const total = await prisma.dish.count({ where });
-// 2. Tính trang hợp lệ từ ?page=
-const { page, totalPages, skip, take } = paginate(total, req.query.page, PAGE_SIZE);
-// 3. Lấy đúng các dòng của trang đó
-const dishes = await prisma.dish.findMany({ where, orderBy, include: { chef: true }, skip, take });
+app.use(corsMiddleware(corsOrigin));   // 1. CORS, kể cả cho phản hồi 404/500
+app.use(express.json());                // 2. đọc body JSON
+app.use(requireJson);                   // 3. POST/PATCH bắt buộc JSON
+app.use("/api/dishes", dishesRouter);   // 4. routers
+// ...
+app.use(routeNotFound);                 // 5. 404 không có ok
+app.use(errorHandler);                  // 6. 500 không lộ err.message
 ```
 
-Hàm `paginate()` (`src/utils/helpers.js`):
+`corsMiddleware` đặt trước router để cả phản hồi lỗi vẫn có header CORS cho origin hợp lệ.
+`requireJson` không áp dụng cho `DELETE` vì thao tác xóa không gửi body.
+
+### 7.4. CORS
+
+- `CORS_ORIGIN` là danh sách origin, ví dụ `http://localhost:5173` hoặc
+  `http://localhost:5173,https://ten-mien.example`.
+- Không có `/` ở cuối; so khớp chính xác scheme + host + port.
+- Không dùng `Access-Control-Allow-Origin: *`.
+- Preflight `OPTIONS` trả `204` với `Access-Control-Allow-Methods: GET,POST,PATCH,DELETE`
+  và `Access-Control-Allow-Headers: Content-Type`.
+- Origin lạ không nhận header `Access-Control-Allow-Origin`.
+- Nếu `CORS_ORIGIN` để trống, server chỉ in cảnh báo khi khởi động và không cho origin nào gọi
+  API.
+
+## 8. Danh sách endpoint
+
+### 8.1. Ba tài nguyên chính
+
+Với `:res` là `dishes`, `chefs` hoặc `ingredients`:
+
+| Thao tác | Request | Thành công | Lỗi nghiệp vụ |
+| --- | --- | --- | --- |
+| Danh sách | `GET /api/:res` | Mảng bản ghi | — |
+| Chi tiết | `GET /api/:res/:id` | Một bản ghi | `NOT_FOUND` |
+| Thêm | `POST /api/:res` | Bản ghi vừa tạo (có `id`) | `VALIDATION_FAILED` |
+| Sửa một phần | `PATCH /api/:res/:id` | Bản ghi sau khi sửa | `VALIDATION_FAILED`, `NOT_FOUND` |
+| Xóa | `DELETE /api/:res/:id` | `data: null` | `NOT_FOUND` |
+
+Danh sách nhận `?page` và `?pageSize`:
+
+| Tham số | Hành vi |
+| --- | --- |
+| Không có `page` | Trả **toàn bộ** danh sách, không có `meta` (dùng cho trang giới thiệu và ô chọn trong form) |
+| `page` hợp lệ | Trả một trang + `meta: { page, totalPages, total, pageSize }` |
+| `page=abc`, `page=0`, `page=-2`, `page=1.5` | Coi như trang 1 |
+| `page` vượt quá | Kẹp về trang cuối |
+| `pageSize` | Số nguyên 1…50; không hợp lệ thì dùng mặc định |
+| Mặc định `pageSize` | 9 với món ăn, 10 với đầu bếp và nguyên liệu |
+
+### 8.2. Query riêng của danh sách món
+
+`GET /api/dishes`
+
+| Tham số | Ý nghĩa |
+| --- | --- |
+| `q` | Tên chứa chuỗi, không phân biệt hoa thường. `q` là mảng (ví dụ `?q[]=x`) hoặc không phải chuỗi thì bỏ qua |
+| `category` | Một trong 5 danh mục; giá trị lạ coi như "Tất cả" |
+| `sort` | `default`, `newest`, `price-asc`, `price-desc`, `name-asc`; giá trị lạ coi như `default` |
+| `page`, `pageSize` | Như bảng trên |
+
+Mỗi món trong danh sách kèm `chef` và `_count.ingredients`. Chi tiết món kèm `chef` và
+`ingredients` (mỗi dòng có `ingredientId`, `quantity`, `ingredient`), sắp theo tên nguyên liệu.
+
+`GET /api/chefs` và `GET /api/ingredients` kèm `_count.dishes`. Chi tiết đầu bếp kèm danh
+sách món phụ trách; chi tiết nguyên liệu kèm các món sử dụng nó.
+
+### 8.3. Endpoint bổ sung
+
+| Request | Mục đích | `data` |
+| --- | --- | --- |
+| `GET /api/stats` | Số liệu đầu trang thực đơn | `{ dishes, categories, chefs, minPrice, tiles: [{ name, count, imageUrl }] }` |
+| `GET /api/options` | Hằng số dùng chung cho form/bộ lọc | `{ categories, sorts: [{ key, label }], units, booking: { slots, maxGuests, maxDays, statuses, minDate, maxDate } }` |
+| `POST /api/bookings` | Khách gửi yêu cầu đặt bàn | Bản ghi vừa tạo, gồm `code` 8 ký tự hex |
+| `GET /api/bookings/:code` | Khách tra cứu yêu cầu của mình | Bản ghi đặt bàn; mã sai định dạng/không có → `NOT_FOUND` |
+| `GET /api/admin/bookings?show=all` | Danh sách đặt bàn | Mặc định chỉ từ hôm nay (giờ Việt Nam); `show=all` lấy cả lịch đã qua; sắp theo `bookedAt`, rồi `id` |
+| `PATCH /api/admin/bookings/:id` | Đổi trạng thái | Body `{ "status": "pending" }`, `"confirmed"` hoặc `"cancelled"`; sai → `VALIDATION_FAILED` với `fields.status` |
+
+`GET /api/stats` tính trên **toàn bộ** thực đơn, không theo bộ lọc, để các ô danh mục luôn có
+đủ số món. `tiles` luôn gồm 5 danh mục cố định; danh mục chưa có món thì `count = 0` và
+`imageUrl = null`.
+
+`GET /api/options` trả khung giờ đặt bàn từ `10:00` đến `21:00`, mỗi 30 phút (23 khung), số
+khách tối đa 20, đặt trước tối đa 60 ngày, cùng `minDate`/`maxDate` theo giờ Việt Nam.
+
+## 9. Kiến trúc SPA
+
+### 9.1. Route (`web/src/router.jsx`)
+
+| URL | Trang | Dữ liệu dùng |
+| --- | --- | --- |
+| `/` | Chuyển hướng sang `/dishes` | — |
+| `/dishes?q&category&sort&page` | Thực đơn: số liệu, ô danh mục, tìm kiếm, lọc, sắp xếp, phân trang | `GET /api/stats`, `GET /api/options`, `GET /api/dishes` |
+| `/dishes/:id` | Chi tiết món, đầu bếp, công thức | `GET /api/dishes/:id` |
+| `/about` | Giới thiệu nhà hàng và đội ngũ đầu bếp | `GET /api/chefs`, `GET /api/stats` |
+| `/bookings/new` | Form đặt bàn | `GET /api/options`, `POST /api/bookings` |
+| `/bookings/:code` | Xác nhận yêu cầu đặt bàn | `GET /api/bookings/:code`, `GET /api/options` |
+| `/admin` | Chuyển hướng sang `/admin/dishes` | — |
+| `/admin/bookings?show=all` | Danh sách đặt bàn, nút đổi trạng thái | `GET/PATCH /api/admin/bookings` |
+| `/admin/dishes?sort&page` | Bảng món ăn | `GET /api/dishes`, `GET /api/options` |
+| `/admin/dishes/new` | Form thêm món | `GET /api/chefs`, `/api/ingredients`, `/api/options`; `POST /api/dishes` |
+| `/admin/dishes/:id` | Chi tiết món trong quản trị | `GET /api/dishes/:id`; đích sau khi thêm/sửa |
+| `/admin/dishes/:id/edit` | Form sửa, điền sẵn từ DB | `GET /api/dishes/:id` + options; `PATCH /api/dishes/:id` |
+| `/admin/dishes/:id/delete` | Trang xác nhận xóa | `GET /api/dishes/:id`; chỉ nút xác nhận mới gọi `DELETE` |
+| `*` | Trang không tìm thấy | — |
+
+Toàn bộ trạng thái bộ lọc (`q`, `category`, `sort`, `page`, `show`) nằm trong URL search
+params, nên link chia sẻ được và Reload giữ nguyên ngữ cảnh.
+
+### 9.2. Tầng gọi API
+
+`web/src/api/client.js` là **nơi duy nhất dùng `fetch`**:
+
+- Base URL lấy từ `import.meta.env.VITE_API_URL`.
+- Chỉ gửi `Content-Type: application/json` khi có body, nên request `GET` không tạo preflight.
+- Nhận `AbortSignal` để huỷ request cũ.
+- Phân biệt ba loại lỗi qua `ApiError.kind`:
+
+| `kind` | Khi nào | SPA xử lý |
+| --- | --- | --- |
+| `network` | `fetch` bị reject (API tắt, CORS chặn) | Khung lỗi chung + nút "Thử lại" |
+| `http` | Status không 2xx, hoặc body không phải JSON đúng dạng | Khung lỗi chung |
+| `business` | HTTP 200 nhưng `ok: false` | `NOT_FOUND` → trang "Không tìm thấy"; `VALIDATION_FAILED` → lỗi dưới từng ô |
+
+`web/src/api/index.js` tạo các hàm mỏng: `dishesApi.list/get/create/update/remove`,
+`chefsApi`, `ingredientsApi`, `bookingsApi`, `adminBookingsApi`, `getStats`, `getOptions`.
+
+### 9.3. Tải dữ liệu và gửi form
+
+`useApiData(loader, deps)`:
+
+- Gọi loader khi `deps` đổi; huỷ request cũ bằng `AbortController`.
+- Trả `status` là `loading`, `ok`, `notFound` hoặc `error`, kèm `data`, `meta`, `retry()`.
+- Kết quả được gắn với khoá của `deps`, nên phản hồi cũ không bao giờ ghi đè dữ liệu của URL
+  mới khi người dùng chuyển trang nhanh.
+- `notFound` chỉ đến từ `error.code === "NOT_FOUND"`, không dựa vào HTTP status.
+
+`useSubmit()`:
+
+- Chặn gửi đúp bằng `pendingRef`.
+- `VALIDATION_FAILED` → `fieldErrors` theo đúng khóa API trả về, kèm thông báo chung.
+- `NOT_FOUND` → "Bản ghi không còn tồn tại."
+- Lỗi khác → "Không kết nối được máy chủ, vui lòng thử lại."
+
+`DataStatus` render thống nhất bốn trạng thái: đang tải, lỗi + thử lại, 404, và nội dung.
+
+Form gửi body JSON với kiểu đúng: `price` là `Number`, `available` là boolean, `chefId` là
+`Number` hoặc `null`, `quantity` đổi dấu phẩy thành dấu chấm rồi `Number`, `guests` là
+`Number`. Sau khi API trả `ok: true`, SPA điều hướng phía client sang trang chi tiết/danh
+sách; không tải lại document.
+
+### 9.4. Luồng dữ liệu tiêu biểu
+
+**Xem thực đơn** (`/dishes?q=phở&category=Món chính&page=2`)
+
+1. `MenuPage` đọc `q`, `category`, `sort`, `page` từ URL.
+2. Gọi song song `GET /api/stats`, `GET /api/options`, và
+   `GET /api/dishes?q=phở&category=Món%20chính&sort=default&page=2&pageSize=9`.
+3. API chuẩn hoá query, đếm tổng rồi lấy đúng trang bằng `skip`/`take`.
+4. JSON trả `data` + `meta`; component vẽ lưới món và thanh phân trang.
+
+**Thêm món** (`/admin/dishes/new`)
+
+1. Trang tải đầu bếp, nguyên liệu và danh mục để hiện trong form.
+2. Submit gửi `POST /api/dishes` với body JSON.
+3. `requireJson` kiểm tra Content-Type; handler gọi `validateDish(req.body, { chefs, ingredients })`.
+4. Có lỗi → `ok: false`, `VALIDATION_FAILED`, `fields`; form hiện lỗi dưới từng ô và giữ nguyên
+   giá trị đang nhập.
+5. Hợp lệ → `prisma.dish.create` cùng công thức (`ingredients: { create: recipe }`), trả bản
+   ghi vừa tạo; SPA chuyển sang `/admin/dishes/:id`.
+
+**Sửa món** (`PATCH /api/dishes/:id`)
+
+1. Kiểm tra id bằng `parseId()`.
+2. Validate ở chế độ partial: chỉ trường có trong body được kiểm tra và ghi.
+3. Nếu body có `ingredients`, toàn bộ công thức cũ bị thay bằng công thức mới trong cùng một
+   lệnh `update` (`deleteMany: {}` + `create`).
+4. Trả bản ghi sau khi sửa; SPA chuyển về trang chi tiết.
+
+**Xóa món** (`DELETE /api/dishes/:id`)
+
+1. Link "Xóa" chỉ mở trang xác nhận `/admin/dishes/:id/delete` (chỉ đọc).
+2. Nút "Xác nhận xóa" mới gửi `DELETE /api/dishes/:id`.
+3. API trả `data: null`; SPA chuyển về `/admin/dishes`.
+
+**Đặt bàn**
+
+1. Form gửi `name`, `phone`, `guests`, `date`, `time`, `note` dạng JSON.
+2. API validate, đổi ngày + giờ Việt Nam thành `bookedAt`, sinh `code` 8 ký tự hex (thử lại tối
+   đa 3 lần nếu trùng `P2002`).
+3. SPA chuyển sang `/bookings/:code`; trang này đọc lại bản ghi từ API theo mã.
+
+## 10. Phân trang
+
+API dùng phân trang offset (`skip`/`take`):
+
+```text
+skip = (page - 1) × pageSize
+take = pageSize
+```
+
+`paginate(total, rawPage, pageSize)` trong `api/src/utils/helpers.js`:
 
 ```js
 function paginate(total, rawPage, pageSize) {
@@ -471,484 +510,258 @@ function paginate(total, rawPage, pageSize) {
 }
 ```
 
-| Bước | Lý do |
-| --- | --- |
-| `count` chạy **trước** `findMany`, không chạy song song | Phải biết `totalPages` mới kẹp được `page` và tính `skip`. Đổi lại mất thêm một lượt gọi database |
-| `count` dùng **cùng `where`** với `findMany` | Số trang tính theo kết quả đã lọc. Tìm "phở" ra 4 món thì chỉ có 1 trang, không phải 6 |
-| `Math.max(1, ...)` | Không có kết quả nào thì vẫn là "trang 1/1" (hiện thông báo trống), không phải trang 0 và không có `skip` âm |
-| `parseId(rawPage) \|\| 1` | Dùng lại hàm kiểm tra id: `?page=abc`, `?page=0`, `?page=-2`, `?page=1.5`, `?page=a&page=b` đều thành trang 1 |
-| `Math.min(..., totalPages)` | `?page=999` thành trang cuối thay vì một trang rỗng |
+Trang vượt quá được kẹp về trang cuối thay vì trả lỗi hay danh sách rỗng. `page` chỉ là điều
+kiện hiển thị; `NOT_FOUND` chỉ dành cho bản ghi không tồn tại.
 
-Trang vượt quá được **kẹp về trang cuối** thay vì trả `404` hay một danh sách rỗng. Tình huống
-thật: admin đang ở trang 6 của món ăn, xóa món cuối cùng của trang đó; hoặc khách lưu link
-`?page=6` rồi thực đơn bớt món. Link cũ vẫn hiện nội dung có ích. `404` chỉ dành cho bản ghi
-không tồn tại (`/dishes/999`), còn `page` chỉ là điều kiện hiển thị.
-
-### Thứ tự sắp xếp phải ổn định
-
-Offset chỉ đúng khi thứ tự giữa các lần truy vấn không đổi. PostgreSQL **không bảo đảm** thứ
-tự của các dòng có cùng giá trị sắp xếp: hai món cùng giá 45 000 ₫ có thể đổi chỗ giữa hai
-request, làm một món xuất hiện ở cả trang 2 và trang 3, món kia biến mất. Vì vậy mỗi kiểu sắp
-xếp trong `DISH_SORTS` đều có thêm `id` làm khóa phụ (`id` là duy nhất):
-
-```js
-"price-asc": { label: "Giá thấp → cao", orderBy: [{ price: "asc" }, { id: "asc" }] },
-```
-
-Danh sách đầu bếp và nguyên liệu sắp theo `id` nên đã ổn định sẵn.
-
-### Link phân trang giữ bộ lọc
-
-Template truyền vào partial một hàm `pageHref(p)` trả URL của trang `p`. Partial chỉ lo vẽ
-nút, còn mỗi trang tự quyết URL gồm những query nào:
-
-```ejs
-<%# views/dishes/index.ejs %>
-const pageHref = function (p) {
-  const base = filterHref(category);          // /dishes?category=...&q=...&sort=...
-  if (p <= 1) return base + "#thuc-don";
-  return base + (base.includes("?") ? "&" : "?") + "page=" + p + "#thuc-don";
-};
-<%- include("../partials/pagination", { page, totalPages, pageHref }) %>
-```
-
-- Trang 1 không ghi `page=1`, nên `/dishes` và "trang 1" là cùng một URL.
-- Giá trị được `encodeURIComponent` ("Món chính" → `M%C3%B3n%20ch%C3%ADnh`).
-- `#thuc-don` cuộn trang mới xuống phần thực đơn, không quay lên phần đầu trang.
-- Ngược lại, **đổi bộ lọc thì về trang 1**: `filterHref()`, form tìm kiếm và form sắp xếp
-  không gửi `page`. Trang 4 của "tất cả món" có thể không tồn tại khi chỉ lọc "Đồ uống", và
-  người dùng muốn xem kết quả mới từ đầu.
-
-### Dãy nút trang (`views/partials/pagination.ejs`)
-
-Luôn hiện trang đầu, trang cuối và 2 trang mỗi bên trang hiện tại; khoảng trống giữa chúng
-thành `…`:
-
-```text
-trang 1 / 20:   ‹  [1] 2 3 … 20  ›
-trang 6 / 20:   ‹  1 … 4 5 [6] 7 8 … 20  ›
-trang 20 / 20:  ‹  1 … 18 19 [20]  ›
-```
-
-- Chỉ có 1 trang thì không hiện thanh phân trang.
-- Nút `‹` ở trang đầu và `›` ở trang cuối là `<span>` mờ, không phải link, nên không có link
-  trỏ tới trang không tồn tại.
-- Trang hiện tại là `<span aria-current="page">`; link trước/sau có `rel="prev"` /
-  `rel="next"`; thẻ `<nav aria-label="Phân trang">` cho trình đọc màn hình.
-- Phía trên danh sách in "51 món · Trang 2/6" để người dùng biết đang ở đâu.
-
-Mọi nút là thẻ `<a>` thường: bấm là một document request `GET` mới, server dựng lại cả trang.
-Không có JavaScript, Back/Forward của trình duyệt đi đúng từng trang, và mỗi trang có URL
-riêng để gửi cho người khác.
-
-### Giới hạn đã biết
-
-| Giới hạn | Vì sao chấp nhận |
-| --- | --- |
-| `OFFSET` lớn vẫn phải quét qua các dòng bị bỏ qua | Dữ liệu chỉ vài chục dòng. Hàng trăm nghìn dòng mới cần chuyển sang cursor (xem mục 11) |
-| `count` và `findMany` là hai truy vấn riêng, không trong transaction | Nếu có người thêm hoặc xóa đúng giữa hai truy vấn, "Trang x/y" có thể lệch một trang trong một lần tải. Lần tải sau tự đúng; không ảnh hưởng dữ liệu |
-| Khi danh sách thay đổi giữa hai lần bấm, một bản ghi có thể bị lặp hoặc bị nhảy qua | Đặc tính chung của offset. Chấp nhận được với thực đơn ít thay đổi |
-
-## 11. Lý do các quyết định kỹ thuật
-
-Mục 4 liệt kê công nghệ. Mục này giải thích vì sao chọn cách đó thay vì phương án khác, và
-nhóm phải đánh đổi gì.
-
-### Kiến trúc và tech stack
-
-| Quyết định | Phương án đã cân nhắc | Lý do chọn | Đánh đổi |
-| --- | --- | --- | --- |
-| SSR: server dựng HTML hoàn chỉnh | SPA (React) gọi API JSON | Đúng chủ đề Block 5. Một server, một codebase, không cần API riêng. Trang có nội dung ngay trong HTML (View Page Source thấy tên món), link nào cũng mở thẳng được | Mỗi thao tác tải lại cả trang; không có cập nhật tức thời |
-| Express 4 | Express 5, Fastify | Starter của lớp, tài liệu và ví dụ trên slide đều là Express 4 | Express 4 không tự bắt lỗi của handler `async`, nên phải tự viết `asyncHandler` |
-| EJS | Pug, Handlebars | Cú pháp là HTML thường chèn JavaScript, cả nhóm đọc được ngay. `<%= %>` tự escape; `include()` truyền tham số được (dùng cho `_form.ejs`, `pagination.ejs`) | Template có thể chứa logic; nhóm tự giữ quy tắc "template không gọi Prisma" |
-| Prisma 6 | SQL thô (`pg`), `knex`, Prisma 7 | Có quan hệ và lọc, sắp xếp, phân trang động (mục 4). Tham số hóa sẵn. Prisma 7 đổi cách cấu hình (`prisma.config.ts`, driver adapter) khác bài giảng | Không thấy ngay câu SQL sinh ra; thêm bước `prisma generate` |
-| `db push` (Code-first) | `prisma migrate dev` | Bài tập chưa có dữ liệu thật cần giữ; `db push` một lệnh là đồng bộ | Không có lịch sử migration. Làm sản phẩm thật nên chuyển sang `migrate` |
-| Hai chuỗi kết nối `DATABASE_URL` (6543) và `DIRECT_URL` (5432) | Một chuỗi Session pooler như slide | Transaction pooler trả kết nối ngay sau mỗi truy vấn, hợp với server dev khởi động lại liên tục; `db push` cần Session mode | Thêm một biến môi trường phải điền |
-| Một `PrismaClient` dùng chung (`src/db/prisma.js`) | `new PrismaClient()` trong từng router | Mỗi client mở một pool kết nối. Với `node --watch`, client được giữ trên `globalThis` để không mở thêm pool sau mỗi lần khởi động lại | Không có |
-| Tailwind qua CDN | Tailwind CLI có bước build, CSS viết tay | Không cần build, chạy `npm run dev` là có giao diện. Bảng màu `brand`, `cream`, `ink` khai báo một chỗ | CDN tạo CSS ở trình duyệt nên tải chậm hơn chút; Tailwind khuyên không dùng CDN cho production |
-| `method-override` qua `?_method=` trong URL | Hidden input `_method` trong body | Đọc từ query nên không phụ thuộc thứ tự với `urlencoded`, và DevTools hiện rõ `POST ...?_method=DELETE` | `_method` lộ trên URL của form (không phải dữ liệu nhạy cảm) |
-
-### Cách xử lý request và dữ liệu
-
-| Quyết định | Lý do |
-| --- | --- |
-| Validator trả `{ values, errors, data }` | Ba nhu cầu khác nhau: `values` là chuỗi gốc để hiện lại form khi `400` (giữ cả giá trị sai như `-5`), `errors` để báo lỗi, `data` là object đã ép kiểu và chỉ có trường được phép ghi. Tách ra nên handler không bao giờ đưa `req.body` vào Prisma |
-| Validator nằm ở server, HTML validation chỉ là phụ | Request có thể gửi bằng `curl` không qua form. Server là nơi duy nhất tin được |
-| Kiểm tra số bằng regex trước khi `Number()` | `Number("")` là `0`, `Number("1e3")` là `1000`, `Number(" 5 ")` là `5`. Regex `/^\d+$/` chỉ nhận đúng dạng chữ số |
-| `chefId`, nguyên liệu đối chiếu với danh sách đọc từ DB | Nếu để database báo lỗi khóa ngoại, người dùng thấy `500`. Kiểm tra trước thì trả `400` với thông báo rõ |
-| Query lạ coi như mặc định, không báo lỗi | `?sort=abc`, `?category=xyz`, `?page=-1` chỉ là điều kiện hiển thị. Trả trang mặc định có ích hơn trang lỗi, và `orderBy` chỉ nhận khóa có trong `DISH_SORTS` nên không đưa được tên cột tùy ý vào truy vấn |
-| `PATCH`: kiểm tra id → tồn tại → dữ liệu | Sửa bản ghi không tồn tại luôn là `404`, không phụ thuộc dữ liệu gửi lên. Thêm `try/catch` mã `P2025` cho trường hợp bị xóa giữa lúc kiểm tra và lúc ghi |
-| Sửa công thức bằng `deleteMany: {}` + `create` trong cùng một `update` | Đơn giản hơn so sánh từng dòng cũ/mới để thêm, sửa, xóa riêng. Prisma chạy cả lệnh nested trong một transaction nên không có lúc món bị mất công thức |
-| Xóa đi qua trang xác nhận `GET .../delete` | Không có link `GET` nào ghi dữ liệu. Trang xác nhận còn báo hệ quả (số món mất đầu bếp phụ trách, số món dùng nguyên liệu) |
-| `onDelete: SetNull` cho đầu bếp, `Cascade` cho bảng nối | Đầu bếp nghỉ không làm mất món khỏi thực đơn. Dòng công thức không có nghĩa khi món hoặc nguyên liệu không còn |
-| `303` thay vì `302` | `303` quy định rõ request tiếp theo là `GET`, kể cả khi request gốc là `PATCH`/`DELETE` |
-| Sau thêm/sửa về trang chi tiết, sau xóa về danh sách | Người dùng thấy ngay kết quả vừa ghi, đọc lại từ DB. Sau xóa thì trang chi tiết không còn |
-| Trang `500` không nhận `err` | Không thể vô tình in tên bảng, cột hay chuỗi kết nối ra HTML; chi tiết lỗi chỉ ở `console.error` của server |
-| `price` kiểu `Int` | VNĐ không có phần lẻ; số thực có sai số khi cộng |
-| Số liệu đầu trang `/dishes` dùng `Promise.all` | Bốn truy vấn (đếm theo danh mục, số đầu bếp, giá thấp nhất, ảnh bìa) không phụ thuộc nhau nên chạy song song. Chúng tính trên toàn thực đơn, không theo bộ lọc, để các ô danh mục luôn hiện đủ số món |
-| Đặt bàn dùng `code` ngẫu nhiên 8 ký tự hex trong URL | `id` tăng dần đoán được. `crypto.randomBytes(4)` cho khoảng 4 tỉ giá trị; nếu trùng (`P2002` của cột `@unique`) thì thử lại tối đa 3 lần |
-| Giờ đặt bàn tính theo `Asia/Ho_Chi_Minh` | Server hoặc database có thể chạy giờ UTC. Tính rõ múi giờ thì "18:30 hôm nay" luôn là 18:30 ở Việt Nam |
-| Seed xóa hết rồi nạp lại | Chạy bao nhiêu lần cũng ra cùng một trạng thái, tiện trước khi demo |
-
-### Vì sao phân trang offset, không dùng cursor
-
-| | Offset (`skip`/`take`, project dùng) | Cursor (`cursor` + `take`) |
+| Trang | Số dòng mỗi trang | Query giữ lại |
 | --- | --- | --- |
-| URL | `?page=3` | `?after=27` (id của dòng cuối trang trước) |
-| Nhảy tới trang bất kỳ, hiện "Trang 3/6" | Được | Không, chỉ "trang sau" / "xem thêm" |
-| Sắp xếp theo giá, tên | Chỉ cần `orderBy` | Cursor phải gồm cả giá trị sắp xếp và `id`, phức tạp hơn |
-| Tốc độ với bảng rất lớn | Chậm dần khi trang càng xa | Ổn định |
-| Danh sách thay đổi giữa hai lần bấm | Có thể lặp hoặc sót một dòng | Không lặp, không sót |
+| `/dishes` | 9 (lưới 3 × 3) | `q`, `category`, `sort` |
+| `/admin/dishes` | 10 | `sort` |
+| `GET /api/chefs` | 10 mặc định | `pageSize` |
+| `GET /api/ingredients` | 10 mặc định | `pageSize` |
 
-Thực đơn vài chục món, cần dãy số trang và nhiều kiểu sắp xếp, nên offset hợp hơn. Cursor
-phù hợp với feed dài vô tận, chẳng hạn danh sách đặt bàn sau vài năm hoạt động.
+`/admin/bookings` không phân trang: mặc định chỉ hiện lịch từ hôm nay trở đi nên danh sách
+ngắn, và nhân viên cần thấy hết lịch sắp tới trên một trang.
 
-### Vì sao không dùng JavaScript phía client
+Mỗi kiểu sắp xếp món đều thêm `id` làm khóa phụ (`DISH_SORTS`), vì PostgreSQL không bảo đảm thứ
+tự của các dòng cùng giá trị sắp xếp. Thứ tự ổn định tránh việc một món xuất hiện ở hai trang
+hoặc bị bỏ qua khi chuyển trang.
 
-Ngoài việc đề bài cấm `fetch`/AJAX, dùng form và link thường cho nhiều thứ miễn phí: Back,
-Reload, mở tab mới, lưu link đều chạy đúng; trang dùng được khi tắt JavaScript (ô sắp xếp có
-nút "Áp dụng" trong `<noscript>`); và mọi trạng thái nằm ở URL hoặc database, không có trạng
-thái nào chỉ tồn tại trong trình duyệt.
+## 11. Luật validate
 
-## 12. Các điểm kiến thức của buổi học
+Validator nằm ở server (`api/src/utils/validators.js`) và nhận **body JSON đã đúng kiểu**.
+HTML validation trong SPA chỉ giúp nhập nhanh; API luôn kiểm tra lại.
 
-### Chuỗi kết nối không rời khỏi server
+### 11.1. Món ăn (`POST` đầy đủ, `PATCH` một phần)
 
-- `DATABASE_URL` chỉ nằm trong `.env` trên server; `.env` nằm trong `.gitignore`, chỉ commit
-`.env.example` (chuỗi mẫu, không có mật khẩu).
-- Không truyền `process.env` hay `prisma` vào `res.render`. View chỉ nhận các helper an toàn
-  qua `app.locals` (`formatPrice`, `formatQty`, `formatDateTime`, `formatPhone`, `DEFAULT_DISH_IMAGE`, `RESTAURANT`).
-- EJS chạy trên server nên đọc được mọi biến handler truyền vào; nếu in ra, giá trị nằm trong
-HTML gửi cho người truy cập. Vì vậy chỉ truyền đúng dữ liệu cần hiển thị.
-
-### Đọc và ghi qua model
-
-- `findUnique` trả `null` khi không có bản ghi: handler trả `404` ngay, không render tiếp.
-- `id` từ URL là chuỗi: đổi thành số và kiểm tra **trước** khi truy vấn. Không có bước này,
-`/dishes/abc` thành lỗi `500` thay vì `404`.
-- `data` truyền vào `create`/`update` là object đã qua validate, **không phải** `req.body`.
-Nếu đưa thẳng `req.body`, client có thể ghi cả trường không được phép (`id`, `createdAt`).
-- Mọi lời gọi Prisma đều có `await`. Thiếu `await` thì handler redirect khi ghi chưa xong,
-hoặc báo thành công khi ghi thất bại.
-
-### Thứ tự middleware
-
-```js
-app.use(express.urlencoded({ extended: false })); // 1. có req.body
-app.use(methodOverride("_method"));               // 2. đổi POST -> PATCH/DELETE
-app.use("/dishes", dishesRouter);                 // 3. routes
-// ...
-app.use((req, res) => res.status(404).render("errors/404")); // 4. không khớp route nào
-app.use((err, req, res, next) => { /* ... */ });            // 5. lỗi 500
-```
-
-`methodOverride` phải đứng trước router. Nếu đặt sau, request đã được khớp như `POST` và
-`router.patch` / `router.delete` không bao giờ chạy.
-
-### HTTP method: GET để đọc, POST/PATCH/DELETE để ghi
-
-Browser, công cụ tìm kiếm và tiện ích tải trước trang có thể **tự gửi GET**. Một link kiểu
-`/admin/dishes/2/xoa-luon` có thể xóa dữ liệu khi không ai bấm. Vì vậy:
-
-- Link "Xóa" chỉ mở trang xác nhận (`GET`); thao tác xóa là form `DELETE`.
-- `method-override` mặc định chỉ đổi method của request `POST`. Thử
-`GET /admin/dishes/1?_method=DELETE` chỉ hiện trang chi tiết, không xóa gì.
-- Trong DevTools → Network, request vẫn hiện là `POST ...?_method=DELETE`; method thật dùng
-để khớp route nằm trong code.
-
-### Post/Redirect/Get và mã `303`
-
-Sau khi ghi thành công, server không render trang mà trả `303 See Other` kèm `Location`.
-Trình duyệt tự gửi `GET` tới địa chỉ đó. Với PATCH và DELETE qua method override, chuỗi vẫn
-là POST → 303 → GET. `303` (thay vì `302`) bảo đảm request tiếp theo luôn là `GET`.
-
-| PRG giải quyết | PRG không giải quyết |
+| Trường | Luật |
 | --- | --- |
-| Reload sau khi ghi chỉ lặp lại `GET` | Bấm gửi hai lần trước khi response đầu về vẫn có thể tạo hai bản ghi |
-| URL trên thanh địa chỉ là trang kết quả, gửi được cho người khác | Hai tab hoặc hai người gửi cùng nội dung vẫn tạo hai bản ghi |
-| Back không quay về một POST đã xử lý | Chặn trùng thật sự cần ràng buộc ở database (tuần 6) |
+| `name` | Chuỗi bắt buộc, tối đa 100 ký tự |
+| `price` | **Số nguyên JSON** từ 0 đến 2 147 483 647. Chuỗi `"50000"`, số thực `1.5`, số âm đều bị từ chối |
+| `category` | Để trống/`null`, hoặc một trong: Khai vị, Món chính, Món phụ, Tráng miệng, Đồ uống |
+| `description` | Không bắt buộc, tối đa 1000 ký tự |
+| `imageUrl` | Không bắt buộc; nếu có phải là URL `http://` hoặc `https://` |
+| `available` | Boolean; **không gửi** thì mặc định `true` |
+| `chefId` | Số nguyên id của đầu bếp đang tồn tại, hoặc `null`/không gửi = chưa phân công |
+| `ingredients` | Mảng `{ ingredientId, quantity }`. Mỗi nguyên liệu phải tồn tại, không trùng; `quantity` là số > 0 và ≤ 100 000 |
 
-### Validate ở server và escape đầu ra
+Khi `PATCH`, chỉ các khóa có trong body được kiểm tra và ghi; khóa lạ bị bỏ qua. Nếu body có
+`ingredients`, danh sách đó thay toàn bộ công thức cũ.
 
-- HTML validation (`required`, `maxlength`) chỉ giúp nhập nhanh; request có thể gửi không qua
-form (ví dụ `curl`), nên server luôn kiểm tra lại từng input.
-- Mọi dữ liệu người dùng được in bằng `<%= %>`, EJS tự escape. Tìm `/dishes?q=<script>` chỉ
-hiện chữ `<script>` trên trang. `<%- %>` (không escape) chỉ dùng cho `include()` partial.
-- Không hiển thị `err.message` của database cho người dùng vì lộ tên bảng và cột.
+Lỗi công thức dùng khóa `ingredients` cho lỗi chung và `ingredients.<id>` cho lỗi định lượng
+của từng nguyên liệu.
 
-### Lỗi thường gặp khi ghi dữ liệu (slide) và cách project tránh
+### 11.2. Đầu bếp và nguyên liệu
 
-| Lỗi | Trong project |
+| Đối tượng | Trường | Luật |
+| --- | --- | --- |
+| Đầu bếp | `name` | Bắt buộc, tối đa 100 ký tự |
+| | `specialty` | Bắt buộc, tối đa 150 ký tự |
+| | `imageUrl` | Như món ăn |
+| Nguyên liệu | `name` | Bắt buộc, tối đa 100 ký tự |
+| | `unit` | Bắt buộc, tối đa 20 ký tự. Không giới hạn trong danh sách gợi ý |
+
+`INGREDIENT_UNITS` trong `options` chỉ là gợi ý cho giao diện; API không bắt buộc đơn vị phải
+nằm trong danh sách này.
+
+### 11.3. Đặt bàn
+
+| Trường | Luật |
 | --- | --- |
-| Dùng link `GET` để xóa hoặc sửa | Không có. Xóa đi qua trang xác nhận + form `DELETE` |
-| Render HTML ngay trong response của `POST`, Reload tạo bản ghi trùng | Ghi thành công luôn `303`; chỉ render khi `400` (không ghi gì) |
-| Hiển thị `err.message` của database | Trang `500` không nhận `err` |
-| Redirect khi chưa `await` xong | Mọi lời gọi Prisma có `await`; `asyncHandler` đưa lỗi tới `500` |
+| `name` | Bắt buộc, tối đa 100 ký tự |
+| `phone` | Chuỗi 10 chữ số bắt đầu bằng `0`; bỏ qua khoảng trắng, dấu chấm, dấu gạch ngang trước khi kiểm tra và lưu chỉ chữ số |
+| `guests` | **Số nguyên JSON** từ 1 đến 20 |
+| `date` | Chuỗi `YYYY-MM-DD`, là ngày có thật, không ở quá khứ |
+| `time` | Một trong các khung 10:00 – 21:00, mỗi 30 phút |
+| `date` + `time` | Phải ở tương lai và trong vòng 60 ngày; tính theo giờ Việt Nam (UTC+7) |
+| `note` | Không bắt buộc, tối đa 500 ký tự |
+| `status` (PATCH admin) | `pending`, `confirmed` hoặc `cancelled` |
 
-## 13. Đối chiếu tiêu chí nghiệm thu
+## 12. Kiểm thử và kiểm tra thủ công
 
-### Tiêu chí nghiệm thu (slide "Tiêu chí nghiệm thu")
-
-| # | Tiêu chí | Cách kiểm tra | Kết quả |
-| --- | --- | --- | --- |
-| 01 | Trang người dùng có danh sách và chi tiết món ăn; id sai hoặc không có trả `404` | `/dishes`, `/dishes/1` → `200`; `/dishes/abc`, `/dishes/0`, `/dishes/1.5`, `/dishes/99999` → `404` | Đạt |
-| 02 | Món ăn, đầu bếp, nguyên liệu đều có danh sách, thêm, sửa, xóa ở `/admin` | 8 route × 3 đối tượng (mục 8.2) | Đạt |
-| 03 | Thêm `POST`, sửa `PATCH`, xóa `DELETE`; không có `fetch` hay AJAX | `src/routes/admin/*.js`; tìm trong `views/` (mục 14) | Đạt |
-| 04 | Input sai trả `400` và giữ giá trị đã nhập; thành công trả `303` | Tên rỗng, giá `-5` → `400`, các ô còn nội dung; dữ liệu đúng → `303` + `Location` | Đạt |
-| 05 | Xóa chỉ xảy ra sau trang xác nhận; Reload không lặp lại thao tác | Link Xóa → trang xác nhận; F5 sau khi lưu chỉ tải lại trang chi tiết | Đạt |
-
-### Kiểm tra mã nguồn: method và request
-
-| Câu hỏi | Kết quả | Vị trí |
-| --- | --- | --- |
-| Có link hoặc route `GET` nào xóa hay sửa dữ liệu không? | Không. Mọi `router.get` chỉ đọc và render | `src/routes/**/*.js` |
-| Sửa và xóa có route `PATCH` và `DELETE` qua method override không? | Có | `router.patch("/:id")`, `router.delete("/:id")` trong 3 file admin; `router.patch("/:id")` ở `src/routes/admin/bookings.js`; `methodOverride` ở `src/app.js` |
-| Thao tác ghi thành công có redirect `303` không? | Có, cả 11 handler ghi (9 CRUD + `POST /bookings` + `PATCH /admin/bookings`) | `res.redirect(303, ...)` |
-| Template có `fetch` hoặc AJAX không? | Không | Xem mục 14 |
-
-### Kiểm tra mã nguồn: dữ liệu và bảo mật
-
-| Câu hỏi | Kết quả | Vị trí |
-| --- | --- | --- |
-| Giá trị người dùng nhập có bị nối vào raw query không? | Không. Không dùng `$queryRaw`/`$queryRawUnsafe`/`$executeRaw` | Toàn bộ `src/` |
-| `req.body` có bị đưa thẳng vào `create` hoặc `update` không? | Không. `data` được tạo từng trường trong validator | `src/utils/validators.js` |
-| Chuỗi kết nối có xuất hiện trong mã, log hoặc template không? | Không. Chỉ có trong `.env`; `.env.example` là chuỗi mẫu | `src/db/prisma.js` không in gì ra log |
-
-### Quy trình làm bài (slide "Quy trình làm bài")
-
-1. **Nối database**: đặt `DATABASE_URL`, khai báo model, `db push`, seed.
-2. **Trang người dùng**: danh sách, chi tiết, `404`.
-3. **CRUD món ăn**: form, validate, method override, redirect sau khi ghi.
-4. **Đầu bếp và nguyên liệu**: lặp lại đúng mẫu của món ăn, rồi đối chiếu tiêu chí nghiệm thu.
-
-## 14. Cách kiểm tra
-
-Mở DevTools → tab Network rồi thử:
-
-- `http://localhost:3000/` → `302` sang `/dishes`.
-- Tìm "phở" → URL thành `/dishes?q=phở`, ô tìm kiếm còn chữ "phở". Tìm "PHỞ" cũng ra.
-- Bấm tab danh mục, đổi "Sắp xếp theo", bấm số trang → mỗi lần là một document request
-`GET /dishes?...`, các điều kiện cũ vẫn còn trong URL.
-- `http://localhost:3000/dishes?q=a&q=b` → trang vẫn chạy, coi như không tìm.
-- `/dishes/abc`, `/dishes/0`, `/dishes/99999` → trang 404 (status `404`).
-- **Quản trị → Món ăn → + Thêm mới**, để trống tên và nhập giá `-5` → status `400`, khung lỗi
-đỏ, các ô còn nguyên nội dung.
-- Nhập đúng rồi gửi → Network có `POST /admin/dishes` (`303`) rồi `GET /admin/dishes/:id` (`200`).
-Nhấn F5: chỉ có `GET`, không tạo thêm bản ghi.
-- Bấm **Sửa**, đổi giá → `POST /admin/dishes/:id?_method=PATCH` (`303`).
-- Bấm **Xóa** → trang xác nhận; **Hủy** quay về danh sách; **Xác nhận xóa** →
-`POST /admin/dishes/:id?_method=DELETE` (`303` → `/admin/dishes`).
-- Làm tương tự với **Đầu bếp** và **Nguyên liệu**. Xóa một đầu bếp: các món của họ thành
-"Chưa phân công", không bị xóa.
-- View Page Source ở `/dishes`: thấy tên món ngay trong HTML.
-
-Tìm AJAX trong template (không có kết quả nào):
+### 12.1. Test tự động
 
 ```bash
-grep -rn "fetch(\|XMLHttpRequest\|axios" views src
+cd api
+npm test            # app.test.js, validators.test.js, helpers.test.js
 ```
 
-JavaScript còn lại trong trang chỉ có ba loại, **không loại nào gửi dữ liệu bằng AJAX**:
-
-| Ở đâu | Làm gì |
-| --- | --- |
-| `views/partials/header.ejs` | Tải Tailwind CDN và khai báo bảng màu thương hiệu (`tailwind.config`) để tạo CSS |
-| `onerror` trên `<img>` (`views/dishes/*.ejs`) | Đổi sang ảnh mặc định khi ảnh món lỗi |
-| `onchange="this.form.submit()"` trên ô "Sắp xếp theo" (cả `views/dishes/index.ejs` và `views/admin/dishes/index.ejs`) | Gửi form `GET` thường (document request, không phải `fetch`). Có nút "Áp dụng" trong `<noscript>` nên vẫn dùng được khi tắt JavaScript |
-
-Kiểm tra bằng `curl` (thêm `-i` để xem status và header `Location`):
+Các test này không cần database: phần HTTP dùng `createApp` trên cổng ngẫu nhiên, phần
+validator/helper là hàm thuần.
 
 ```bash
-curl -i "http://localhost:3000/dishes/abc"
-curl -i -X POST "http://localhost:3000/admin/dishes" -d "name=&price=-5"
-curl -i -X POST "http://localhost:3000/admin/dishes" -d "name=Com tam&price=50000&category=Món chính&available=on"
+cd web
+npm test            # client.test.js
+npm run build       # kiểm tra SPA build được
 ```
 
-## 15. Minh chứng
+Nếu `node --test` trong môi trường không mở rộng mẫu glob, truyền trực tiếp file:
 
-| File | Nội dung |
+```bash
+# api
+node --test test/app.test.js test/validators.test.js test/helpers.test.js
+# web
+node --test src/api/client.test.js
+```
+
+### 12.2. Acceptance test
+
+Cần API đang chạy và database đã seed:
+
+```bash
+cd api
+npm run acceptance
+```
+
+Script kiểm tra các nhóm món ăn (kèm thống kê, tùy chọn và CORS), đầu bếp, nguyên liệu và đặt
+bàn. Mặc định dùng `http://localhost:3000` và origin `http://localhost:5173`; có thể ghi đè
+bằng biến môi trường `API_URL` và `ORIGIN`.
+
+- Bản ghi do script tạo ở ba bảng chính được xóa lại bằng API trong `finally`.
+- **Đặt bàn không có endpoint xóa**, nên các yêu cầu tên `ZZ Acceptance` sẽ còn lại trong DB.
+  Chạy `npm run db:seed` để dọn.
+
+### 12.3. Kiểm tra bằng `curl`
+
+```bash
+# Danh sách có phân trang
+curl -i "http://localhost:3000/api/dishes?page=1&pageSize=9"
+
+# Tìm kiếm + lọc + sắp xếp
+curl -i "http://localhost:3000/api/dishes?q=ph%E1%BB%9F&category=M%C3%B3n%20ch%C3%ADnh&sort=price-asc"
+
+# Bản ghi không tồn tại: HTTP 200, ok:false, NOT_FOUND
+curl -i "http://localhost:3000/api/dishes/999999"
+
+# Id sai định dạng: cũng là NOT_FOUND
+curl -i "http://localhost:3000/api/dishes/abc"
+
+# Validate sai: HTTP 200, ok:false, VALIDATION_FAILED
+curl -i -X POST "http://localhost:3000/api/dishes" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"","price":-5}'
+
+# Tạo hợp lệ: HTTP 200, ok:true
+curl -i -X POST "http://localhost:3000/api/dishes" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Cơm tấm","price":50000,"category":"Món chính"}'
+
+# Sửa một phần
+curl -i -X PATCH "http://localhost:3000/api/dishes/1" \
+  -H "Content-Type: application/json" \
+  -d '{"price":60000}'
+
+# Xóa
+curl -i -X DELETE "http://localhost:3000/api/dishes/1"
+
+# Sai Content-Type: HTTP 400, không có ok
+curl -i -X POST "http://localhost:3000/api/dishes" \
+  -H "Content-Type: text/plain" -d 'x'
+
+# Route lạ: HTTP 404, không có ok
+curl -i "http://localhost:3000/api/bok"
+```
+
+Trên PowerShell, `curl` có thể là alias của `Invoke-WebRequest`; dùng `curl.exe` để có hành vi
+như trên.
+
+Có thể dùng `api/requests.http` với REST Client của VS Code để chạy cùng bộ request.
+
+### 12.4. Kiểm tra SPA
+
+Mở DevTools → Network:
+
+- `/` chuyển sang `/dishes`; các bộ lọc, sắp xếp và số trang đều nằm trong URL.
+- Tìm "phở" → URL có `q=phở`; gõ "PHỞ" vẫn ra kết quả.
+- Reload hoặc mở link trực tiếp `/dishes?page=2` vẫn đúng trang.
+- Dừng API rồi tải lại trang → khung "Không tải được dữ liệu" + nút "Thử lại".
+- Mở `/dishes/999999` → khung 404 của SPA. Network hiện status `200` vì đây là lỗi nghiệp vụ;
+  kiểm tra body có `ok: false` và `code: NOT_FOUND`.
+- Quản trị món ăn: thêm/sửa/xóa không tải lại document; Network chỉ có request JSON tương ứng.
+- Trang xóa: chỉ khi bấm "Xác nhận xóa" mới có request `DELETE`.
+- Gửi trùng nút submit: nút bị vô hiệu trong lúc chờ nên chỉ có một request.
+- Đặt bàn: sau khi gửi, URL chuyển thành `/bookings/<mã 8 ký tự hex>`.
+- Đổi trạng thái đặt bàn ở `/admin/bookings` → có `PATCH /api/admin/bookings/:id`, danh sách
+  được tải lại.
+
+### 12.5. Kiểm tra CORS
+
+```bash
+curl -i -X OPTIONS "http://localhost:3000/api/dishes/1" \
+  -H "Origin: http://localhost:5173" \
+  -H "Access-Control-Request-Method: PATCH" \
+  -H "Access-Control-Request-Headers: content-type"
+```
+
+Kết quả mong đợi: `204`, `Access-Control-Allow-Origin: http://localhost:5173` (không phải
+`*`). Gửi cùng request với `Origin: http://evil.test` sẽ không có header
+`Access-Control-Allow-Origin`.
+
+## 13. Trạng thái triển khai và giới hạn đã biết
+
+| Hạng mục | Trạng thái |
 | --- | --- |
-| `evidence/supabase-tables.png` | Table Editor của Supabase sau `db push` và seed |
-| `evidence/network-create.png` | `POST /admin/dishes` → `303` → `GET /admin/dishes/:id` |
-| `evidence/network-delete.png` | `POST ...?_method=DELETE` → `303` → `GET /admin/dishes` |
-| `evidence/validation-400.png` | Form với khung lỗi đỏ và giá trị còn giữ |
-| `evidence/demo.webm` | Video thao tác theo các bước ở mục 14 |
+| API JSON cho món ăn, đầu bếp, nguyên liệu | Đã có đủ CRUD |
+| Hình dạng phản hồi thống nhất, mã lỗi | Đã có (`respond.js`) |
+| CORS theo allowlist | Đã có |
+| SPA: thực đơn, chi tiết món, giới thiệu | Đã có |
+| SPA: đặt bàn cho khách, xác nhận theo mã | Đã có |
+| SPA: quản trị món ăn (danh sách, thêm, chi tiết, sửa, xóa) | Đã có |
+| SPA: quản trị đặt bàn | Đã có |
+| SPA: quản trị đầu bếp và nguyên liệu | **Chưa có trang**. API đã sẵn sàng, nhưng `router.jsx` chưa khai báo route `/admin/chefs`, `/admin/ingredients` |
+| Đăng nhập / phân quyền | **Không có**. Mọi endpoint quản trị đều công khai, nằm ngoài phạm vi bài này; không dùng cho production |
+| Test | Unit test cho API và API client; acceptance script cần API chạy. Không có test end-to-end trình duyệt |
+| Thư mục `evidence/` | **Chưa có** trong repository hiện tại |
 
-## 16. Đoạn code chính cần giải thích
+Các điểm cần biết thêm:
 
-**Đọc id và trả 404** (`src/utils/helpers.js`):
+- Menu quản trị trong `web/src/components/Layout.jsx` có liên kết tới `/admin/chefs` và
+  `/admin/ingredients`; vì chưa có route, hai liên kết này hiện rơi vào trang `*` (không tìm
+  thấy). Trang chi tiết món cũng trỏ tới `/admin/chefs/:id` và `/admin/ingredients/:id` với
+  cùng kết quả.
+- API không có endpoint xóa đặt bàn; nhân viên chỉ đổi trạng thái.
+- Không có lịch sử migration: project dùng `prisma db push`. Khi triển khai thật nên chuyển
+  sang `prisma migrate`.
+- Phân trang offset chậm dần với bảng rất lớn và có thể lặp/sót dòng nếu dữ liệu thay đổi giữa
+  hai lần bấm. Với vài chục món, cách này đổi lấy khả năng nhảy tới trang bất kỳ.
+- `count` và `findMany` là hai truy vấn riêng, không nằm trong transaction; nếu dữ liệu đổi
+  đúng giữa hai truy vấn, "Trang x/y" có thể lệch một trang trong một lần tải.
+- `GET /api/dishes` không có `page` trả toàn bộ danh sách. Đây là chủ ý để form và trang giới
+  thiệu lấy đủ dữ liệu, nhưng sẽ không phù hợp nếu thực đơn rất lớn.
+- Khi triển khai SPA lên static host, cần cấu hình fallback mọi đường dẫn về `index.html` để
+  deep link như `/dishes/1` hoạt động. Vite dev và `vite preview` đã làm việc này sẵn.
+- `VITE_API_URL` và `CORS_ORIGIN` là hai cấu hình phải khớp nhau; đổi cổng một bên mà không
+  đổi bên kia sẽ khiến SPA không gọi được API.
 
-```js
-function parseId(raw) {
-  const id = Number(raw);
-  if (!Number.isInteger(id) || id <= 0) return null;
-  return id;
-}
-```
+## 14. Quyết định kỹ thuật
 
-**Đọc query an toàn và truy vấn qua model** (`src/routes/dishes.js`, rút gọn):
+| Quyết định | Lý do | Đánh đổi |
+| --- | --- | --- |
+| Tách `api/` và `web/`, chạy hai origin | Đúng yêu cầu REST API + SPA; backend không phụ thuộc giao diện | Phải cấu hình CORS và hai tiến trình |
+| Lỗi nghiệp vụ trả HTTP `200` + `ok: false` | Một hình dạng phản hồi cho mọi kết quả của handler; client phân biệt bằng `error.code` | Không thể chỉ nhìn status; phải đọc body. Đã ghi rõ ở mục 7 |
+| Chỉ cho origin trong `CORS_ORIGIN` | Không mở API cho mọi website; preflight trả đúng origin | Thêm một biến môi trường và dễ lỗi khi đổi cổng |
+| Prisma 6 | Quan hệ, lọc, sắp xếp, phân trang; tham số hóa sẵn; Prisma 7 đổi cách cấu hình (`prisma.config.ts`, driver adapter) | Không thấy ngay SQL sinh ra; cần `prisma generate` |
+| `db push` (Code-first) | Bài tập chưa cần giữ lịch sử dữ liệu; một lệnh là đồng bộ schema | Không có migration để rollback |
+| Một `PrismaClient` dùng chung | Tránh mở nhiều pool, đặc biệt khi `node --watch` khởi động lại | Không có |
+| Một API client duy nhất trong SPA | Mọi request đi qua cùng chỗ xử lý lỗi, base URL và header | Không có |
+| `useApiData` huỷ request cũ | Tránh phản hồi của trang trước ghi đè dữ liệu trang mới | Thêm một hook và một `AbortController` mỗi lần tải |
+| Không dùng global store | Mỗi trang tự tải dữ liệu theo URL; không có trạng thái ẩn trong bộ nhớ | Chuyển trang tải lại dữ liệu; với API nhỏ thì chấp nhận được |
+| `useSubmit` chặn gửi đúp | Tránh tạo hai bản ghi khi bấm nhanh hai lần | Chỉ chặn trong một tab/phiên |
+| Mã đặt bàn ngẫu nhiên 8 ký tự hex | `id` tăng dần đoán được; mã khó đoán hơn và không lộ thông tin khách khác | Vẫn có thể trùng; xử lý `P2002` bằng cách thử lại tối đa 3 lần |
+| Seed xóa trước rồi nạp | Chạy lại luôn ra cùng trạng thái, tiện trước khi demo | Xóa cả đặt bàn và dữ liệu người dùng thêm |
+| Tailwind qua PostCSS | Bản build thật, không phụ thuộc CDN; giữ bảng màu thương hiệu | Cần `npm run build` khi triển khai |
+| Không dùng `dangerouslySetInnerHTML` | React tự escape dữ liệu; giảm nguy cơ XSS | Không render được HTML tùy ý từ API |
 
-```js
-const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-const sort = parseDishSort(req.query.sort);
+## 15. Tổng kết
 
-const where = { name: { contains: q, mode: "insensitive" } };
-if (category) where.category = category;
-
-const total = await prisma.dish.count({ where });
-const { page, totalPages, skip, take } = paginate(total, req.query.page, PAGE_SIZE);
-
-const dishes = await prisma.dish.findMany({
-  where,
-  orderBy: DISH_SORTS[sort].orderBy,
-  include: { chef: true },
-  skip,
-  take,
-});
-```
-
-**Thêm bản ghi** (`src/routes/admin/dishes.js`):
-
-```js
-router.post(
-  "/",
-  asyncHandler(async (req, res) => {
-    const options = await loadFormOptions();
-    const { values, errors, data, recipe } = validateDish(req.body, options);
-    if (errors.length > 0) {
-      return res.status(400).render("admin/dishes/new", {
-        title: "Thêm món ăn",
-        values,
-        errors,
-        categories: DISH_CATEGORIES,
-        ...options,
-      });
-    }
-
-    const created = await prisma.dish.create({
-      data: { ...data, ingredients: { create: recipe } },
-    });
-    res.redirect(303, "/admin/dishes/" + created.id);
-  })
-);
-```
-
-**Sửa bản ghi** (`src/routes/admin/dishes.js`, rút gọn):
-
-```js
-router.patch(
-  "/:id",
-  asyncHandler(async (req, res) => {
-    const id = parseId(req.params.id);
-    if (id === null) return notFound(res);
-
-    const dish = await prisma.dish.findUnique({ where: { id } });
-    if (!dish) return notFound(res);
-
-    const options = await loadFormOptions();
-    const { values, errors, data, recipe } = validateDish(req.body, options);
-    if (errors.length > 0) {
-      return res.status(400).render("admin/dishes/edit", { title: "Sửa món ăn", dish, values, errors, /* ... */ });
-    }
-
-    try {
-      await prisma.dish.update({
-        where: { id },
-        data: { ...data, ingredients: { deleteMany: {}, create: recipe } },
-      });
-    } catch (err) {
-      if (isNotFoundError(err)) return notFound(res);
-      throw err;
-    }
-    res.redirect(303, "/admin/dishes/" + id);
-  })
-);
-```
-
-**Form xác nhận xóa** (`views/admin/dishes/delete.ejs`):
-
-```html
-<form method="POST" action="/admin/dishes/<%= dish.id %>?_method=DELETE">
-  <button type="submit">Xác nhận xóa</button>
-</form>
-<a href="/admin/dishes">Hủy</a>
-```
-
-**Bắt lỗi toàn cục** (`src/app.js`):
-
-```js
-app.use((err, req, res, next) => {
-  console.error(err);
-  if (res.headersSent) return next(err);
-  res.status(500).render("errors/500");
-});
-```
-
-Giải thích:
-
-- `parseId` chặn id sai ngay đầu handler. Không có nó, `Number("abc")` là `NaN`, Prisma
-báo lỗi kiểu dữ liệu và người dùng thấy `500` thay vì `404`.
-- **Đọc query**: `typeof ... === "string"` loại trường hợp `?q=a&q=b` (mảng). `category` chỉ
-nhận giá trị trong `DISH_CATEGORIES`, `sort` chỉ nhận khóa trong `DISH_SORTS`, nên người
-dùng không thể đưa tên cột tùy ý vào `orderBy`. Mỗi kiểu sắp xếp có thêm `id` để thứ tự ổn
-định khi phân trang (hai món cùng giá không đổi chỗ giữa các trang). Chi tiết phân trang ở
-mục 10.
-- `validateDish` trả bốn thứ: `values` để hiện lại form, `errors` để báo lỗi, `data` để
-ghi bảng `dishes`, `recipe` để ghi bảng nối. `data` được tạo từng trường, nên trường lạ
-trong `req.body` không lọt vào Prisma. `chefId` và từng nguyên liệu được đối chiếu với danh
-sách đọc từ DB, nên không gán được id không tồn tại.
-- **Handler** `POST` chỉ gọi `create` khi `errors` rỗng. Khi lỗi, nó render lại **cùng view**
-`new` với `values` đã gõ và status `400`. `ingredients: { create: recipe }` tạo món và công
-thức trong một lệnh.
-- **Handler** `PATCH` kiểm tra theo thứ tự id hợp lệ → bản ghi tồn tại (`404`) → dữ liệu hợp
-lệ (`400`), nên sửa một bản ghi không tồn tại luôn là `404`, kể cả khi dữ liệu cũng sai.
-`deleteMany: {}` rồi `create: recipe` thay toàn bộ công thức cũ trong cùng một `update`.
-`isNotFoundError` bắt lỗi Prisma `P2025` (bản ghi bị xóa giữa lúc kiểm tra và lúc ghi) để
-trả `404` thay vì `500`.
-- `res.redirect(303, ...)` áp dụng Post/Redirect/Get: F5 sau khi lưu không gửi lại form.
-- **Form xóa** dùng `method="POST"` vì HTML không hỗ trợ `DELETE`; `?_method=DELETE` để
-`method-override` đổi method. Link Hủy là `GET` vì không thay đổi dữ liệu.
-- **Middleware lỗi** có 4 tham số nên Express nhận ra đây là error handler. `asyncHandler`
-chuyển mọi Promise bị reject vào đây. Trang `500` không nhận `err`, nên không thể vô tình in
-thông tin lỗi ra HTML.
-
-## 17. Phạm vi làm thêm
-
-Ngoài yêu cầu của slide, nhóm đã thêm:
-
-- Quan hệ món – đầu bếp và món – nguyên liệu có định lượng (mục 6). Trang chi tiết đầu bếp
-liệt kê món phụ trách; trang chi tiết nguyên liệu liệt kê các món dùng nó.
-- Trang khách: lọc theo danh mục, sắp xếp, phân trang 9 món mỗi trang. Tất cả đều là query
-param của `GET /dishes`, không đổi URL của trang chi tiết.
-- Trang quản trị món ăn: ô "Sắp xếp theo" dùng chung danh sách kiểu sắp xếp với trang khách.
-- Đặt bàn: form ở `/bookings/new` (giờ đến chọn bằng các nút khung giờ), trang xác nhận có
-mã đặt bàn, và trang quản trị `/admin/bookings` để xác nhận hoặc hủy. Vẫn chỉ dùng form
-HTML + `303`, không có AJAX.
-- Ảnh món ăn và ảnh đầu bếp (URL Unsplash). Món không có ảnh hoặc ảnh lỗi dùng ảnh mặc định;
-đầu bếp không có ảnh hiện chữ cái đầu của tên.
-
-## 18. Tổng kết
-
-Theo bốn ý tổng kết của buổi học:
-
-- **Dữ liệu nằm trong database; mỗi request đọc lại nên HTML khớp với dữ liệu.** Không trang
-nào nhận dữ liệu từ trang trước; mọi trang đọc lại từ PostgreSQL qua Prisma.
-- **ORM thay SQL thô bằng model, vẫn chạy trên server cùng chuỗi kết nối.** `prisma` chỉ dùng
-trong handler; `DATABASE_URL` chỉ ở `.env`.
-- **Param cho biết bản ghi, query cho điều kiện hiển thị, body cho nội dung ghi.**
-`/dishes/:id`, `/dishes?q=&category=&sort=&page=`, form `POST`.
-- **GET để đọc; POST, PATCH, DELETE để ghi; redirect sau khi ghi.** Mọi thao tác ghi kết thúc
-bằng `303`.
-
-| Phần | Trạng thái |
-| --- | --- |
-| Express + EJS + Prisma (Code-first) + PostgreSQL Supabase | Đạt |
-| `urlencoded`, `methodOverride` trước router; `404` và `500` cuối cùng | Đạt |
-| 3 model + seed cho cả ba bảng (51 món, 5 đầu bếp, 45 nguyên liệu) | Đạt |
-| Trang người dùng: danh sách, tìm kiếm giữ `q`, chi tiết, `404` | Đạt |
-| Trang quản trị: 8 route CRUD × 3 đối tượng, trang xác nhận xóa riêng | Đạt |
-| Validate ở server, không truyền thẳng `req.body`, kiểm tra `id` và `q` | Đạt |
-| `400` giữ giá trị, `404` thân thiện, `500` không lộ lỗi | Đạt |
-| Không `fetch`/AJAX, không GET ghi dữ liệu | Đạt |
-| Tiêu chí nghiệm thu 01 đến 05 | Đạt hết |
-| Minh chứng (`evidence/`) | Đạt. Đã có đủ 5 file (mục 15) |
+- **Dữ liệu nằm trong database; mỗi lần tải trang, SPA đọc lại qua API.** Không trang nào nhận
+  bản ghi từ trang trước; chi tiết món và form sửa đều lấy dữ liệu theo `id` trong URL.
+- **REST tách backend khỏi giao diện.** Backend chỉ biết JSON; giao diện có thể thay đổi mà
+  không sửa API, miễn giữ hợp đồng `{ ok, data, meta? }` và các endpoint.
+- **CORS là cấu hình bắt buộc, không dùng proxy hay `*`.** Origin của SPA phải nằm trong
+  `CORS_ORIGIN`.
+- **Validate ở server, escape ở client.** API kiểm tra kiểu và giá trị; React render dữ liệu
+  bằng JSX nên nội dung người dùng không được chèn thành HTML.
+- **Phân trang, lọc, sắp xếp và trạng thái điều hướng đều đi qua URL/API.** Link chia sẻ được
+  và Reload vẫn đúng ngữ cảnh. Giá trị đang gõ trong form chỉ nằm trong bộ nhớ cho tới khi
+  gửi; dữ liệu đã ghi luôn đọc lại từ database.
