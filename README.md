@@ -1,7 +1,19 @@
-# Lửa Hồng - REST API và SPA
+# Lửa Hồng - Tìm kiếm và phân trang
 
-Báo cáo Block 6 ("REST API và SPA") của nhóm. Ứng dụng nhà hàng được tách thành **hai
-package trong cùng repository**:
+Báo cáo Block 7 ("Tìm kiếm và phân trang") của nhóm. Block 7 mở rộng ứng dụng nhà hàng của
+Block 6 (REST API + SPA) để chạy trên một thực đơn **1.500 món**:
+
+- **Ba kiểu phân trang** ở thực đơn khách (`/dishes`): Số trang, Tải thêm, Cuộn vô hạn, chuyển
+  bằng một nút trên trang (mục 10).
+- **Bốn kiểu tìm kiếm tại server** ở cả thực đơn và trang quản lý món (`/admin/dishes`):
+  Cơ bản (`basic`), Nâng cao (`advanced`: tên, khoảng giá, tình trạng, nguyên liệu, danh mục),
+  Toàn văn (`fulltext`, PostgreSQL full-text) và Gần đúng (`fuzzy`, `pg_trgm`) (mục 11).
+- **Migration PostgreSQL** bật `pg_trgm` và tạo index GIN cho full-text và trigram (mục 6).
+- **Seed 1.500 món, 103 nguyên liệu** sinh cố định từ `api/prisma/catalog.js` (mục 6).
+- Câu trả lời cho phần **"Trình bày quyết định của nhóm"** (mục 16) và danh sách **bằng chứng
+  nộp** (mục 17).
+
+Ứng dụng vẫn gồm **hai package trong cùng repository**:
 
 - `api/`: server Express chỉ trả **JSON**. Router → handler → validator → Prisma →
   PostgreSQL (Supabase). Không render HTML.
@@ -37,14 +49,29 @@ SPA chuyển trang bằng điều hướng phía client (không tải lại cả
 
 ## 2. Phạm vi bài làm
 
+### 2.1. Yêu cầu Block 7
+
+| Yêu cầu (slide) | Cách project đáp ứng |
+| --- | --- |
+| ≥ 1.000 món trong Supabase, có script seed, giữ CRUD (33) | `npm run db:seed` nạp **1.500 món** từ `api/prisma/catalog.js`; CRUD món/đầu bếp/nguyên liệu giữ nguyên |
+| Ba cách hiển thị: Số trang, Load More, Infinite Scroll (34) | Nút "Số trang / Tải thêm / Cuộn vô hạn" trên `/dishes` (`?view=pages\|more\|scroll`), mục 10 |
+| Nhóm tự chọn client/server paging, tải trang HTML hay AJAX (35) | Server-side paging; cập nhật giao diện bằng AJAX (`fetch`) trong SPA, mục 16 |
+| Filter/sort ở chức năng phù hợp, nêu tập dữ liệu bị tác động (36) | Lọc danh mục, khoảng giá, tình trạng, nguyên liệu; sắp tên/giá; tất cả chạy ở server trên **toàn bộ** kết quả, mục 11 và 16 |
+| Search tại server: `basic`, `advanced`, `fulltext`, `fuzzy` (37) | `GET /api/dishes?mode=...`, có ở cả `/dishes` và `/admin/dishes`, mục 11 |
+| Cấu hình PostgreSQL: full-text `simple`, document gồm tên + mô tả (NULL), `pg_trgm` ngưỡng 0.3, xếp theo điểm rồi `id` (38) | `api/prisma/search.sql` + `api/src/db/dish-search.js`, mục 6 và 11 |
+| Mở lại kết quả và thay đổi điều kiện (39) | Tiêu chí nằm trên URL; tìm lại/đổi lọc/sắp xếp về đầu kết quả; Tải thêm/Cuộn không trộn hai lần tìm; hành vi mở lại link được công bố ở mục 10.4 |
+| Nghiệm thu bằng kết quả quan sát được (40) | Acceptance script + kiểm tra SPA, mục 13 |
+| Trình bày quyết định của nhóm (41) | Mục 16 |
+| Bằng chứng nộp (42) | Mục 17 và thư mục `evidence/` |
+
+### 2.2. Kế thừa từ Block 6
+
 | Hạng mục | Cách project đáp ứng |
 | --- | --- |
 | Backend chỉ trả JSON | `api/src/http/respond.js` bọc mọi phản hồi của handler trong `{ ok, data, meta? }` hoặc `{ ok: false, error }` |
 | REST cho ba tài nguyên | `GET/POST /api/dishes`, `/api/chefs`, `/api/ingredients`; `GET/PATCH/DELETE /api/<res>/:id` |
 | SPA ở origin khác | `web/` chạy Vite cổng 5173, gọi `VITE_API_URL` (giá trị mẫu `http://localhost:3000`) |
 | CORS thật, không dùng proxy | `api/src/http/cors.js` chỉ cho các origin trong `CORS_ORIGIN`, không dùng `*` |
-| Giữ dữ liệu và nghiệp vụ của bài trước | Cùng schema Prisma, seed, quy tắc validate, quan hệ món – đầu bếp – nguyên liệu, đặt bàn |
-| Phân trang, lọc, sắp xếp | Query param trên `GET /api/dishes`; `?page` và `?pageSize` cho cả ba danh sách |
 | Trạng thái lỗi theo quy ước | Lỗi nghiệp vụ trả HTTP `200` với `ok: false`; lỗi giao thức trả `400`/`404`/`500` không có `ok` (mục 7) |
 
 ## 3. Công nghệ sử dụng
@@ -69,7 +96,9 @@ api/                                  # Backend: chỉ JSON
 ├── src/
 │   ├── server.js                     # nạp .env, cảnh báo thiếu CORS_ORIGIN, app.listen
 │   ├── app.js                        # CORS → JSON body → requireJson → routers → 404 → 500
-│   ├── db/prisma.js                  # một PrismaClient dùng chung (giữ trên globalThis khi dev)
+│   ├── db/
+│   │   ├── prisma.js                 # một PrismaClient dùng chung; LOG_SQL=1 in câu SQL
+│   │   └── dish-search.js            # tìm kiếm món: where Prisma (basic/advanced), SQL xếp hạng (fulltext/fuzzy)
 │   ├── http/
 │   │   ├── respond.js                # ok/fail/notFound/validationFailed/requireJson/404/500
 │   │   └── cors.js                   # đọc CORS_ORIGIN, cấu hình cors()
@@ -82,16 +111,20 @@ api/                                  # Backend: chỉ JSON
 │   │   ├── stats.js                  # số liệu đầu trang thực đơn
 │   │   └── options.js                # danh mục, kiểu sắp xếp, đơn vị, khung giờ đặt bàn
 │   └── utils/
-│       ├── helpers.js                # parseId, paginate, pageParams, todayInVietnam, asyncHandler...
-│       └── validators.js             # validateDish/Chef/Ingredient/Booking, hằng số dùng chung
+│       ├── helpers.js                # parseId, paginate, pageParams, escapeLike, todayInVietnam...
+│       └── validators.js             # validateDish/Chef/..., parseDishSearch, SEARCH_MODES, hằng số
 ├── prisma/
 │   ├── schema.prisma                 # Dish, Chef, Ingredient, DishIngredient, Booking
-│   └── seed.js                       # xóa dữ liệu cũ rồi nạp 51 món, 5 đầu bếp, 45 nguyên liệu
+│   ├── search.sql                    # migration tìm kiếm: pg_trgm + index GIN (npm run db:search)
+│   ├── catalog.js                    # dữ liệu mẫu: 51 món viết tay + sinh thêm cho đủ 1.500 món
+│   └── seed.js                       # xóa dữ liệu cũ rồi ghi catalog bằng createMany
 ├── test/
-│   ├── app.test.js                   # response shape, 400/404/413/415, CORS, preflight
-│   ├── validators.test.js            # luật validate và chế độ PATCH một phần
-│   └── helpers.test.js               # parseId (kể cả giới hạn INT4), paginate, pageParams, ngày giờ
-├── scripts/acceptance.mjs            # chạy toàn bộ bảng REST + CORS + đặt bàn
+│   ├── app.test.js                   # response shape, 400/404/413/415, CORS, options, VALIDATION_FAILED
+│   ├── validators.test.js            # luật validate, chế độ PATCH một phần, parseDishSearch
+│   ├── helpers.test.js               # parseId, paginate, pageParams, escapeLike, ngày giờ
+│   ├── dish-search.test.js           # where của basic/advanced, SQL của fulltext/fuzzy, orderByIds
+│   └── catalog.test.js               # 1.500 món, tên không trùng, công thức hợp lệ, sinh cố định
+├── scripts/acceptance.mjs            # bảng REST + CORS + đặt bàn + tìm kiếm 4 mode
 ├── requests.http                     # request mẫu cho REST Client của IDE
 ├── .env.example
 └── package.json
@@ -106,11 +139,13 @@ web/                                  # Frontend: React SPA
 │   │   └── index.js                  # dishesApi, chefsApi, ingredientsApi, bookingsApi...
 │   ├── hooks/
 │   │   ├── useApiData.js             # tải dữ liệu, huỷ request cũ, trạng thái + retry
+│   │   ├── useLoadMore.js            # danh sách tích lũy cho Tải thêm / Cuộn vô hạn
 │   │   ├── useSubmit.js              # chặn gửi đúp, gom fieldErrors/formError
 │   │   └── useDocumentTitle.js
-│   ├── components/                   # Layout, Pagination, DataStatus, FieldError, ảnh/avatar...
+│   ├── components/                   # Layout, Pagination, DataStatus, SearchForm, SearchError, ViewSwitch...
 │   ├── pages/
-│   │   ├── MenuPage.jsx              # thực đơn: tìm, lọc, sắp xếp, phân trang
+│   │   ├── MenuPage.jsx              # thực đơn: tìm 4 mode, lọc, sắp xếp, 3 kiểu phân trang
+│   │   ├── menu/LoadMoreList.jsx     # lưới Tải thêm / Cuộn vô hạn (IntersectionObserver)
 │   │   ├── DishPage.jsx              # chi tiết món + đầu bếp + công thức
 │   │   ├── AboutPage.jsx
 │   │   ├── NotFoundPage.jsx, RouteErrorPage.jsx
@@ -120,7 +155,10 @@ web/                                  # Frontend: React SPA
 │   │       ├── dishes/               # danh sách, thêm, chi tiết, sửa, xóa
 │   │       ├── chefs/                # danh sách, thêm, chi tiết, sửa, xóa
 │   │       └── ingredients/          # danh sách, thêm, chi tiết, sửa, xóa
-│   └── lib/                          # format giá/ngày/điện thoại, thông tin nhà hàng
+│   └── lib/
+│       ├── dish-search.js            # tiêu chí tìm kiếm ⇄ URL ⇄ query API (+ test)
+│       ├── load-more.js              # trạng thái thuần của danh sách tích lũy (+ test)
+│       └── format.js, restaurant.js  # format giá/ngày/điện thoại, thông tin nhà hàng
 ├── index.html
 ├── vite.config.js
 ├── tailwind.config.js
@@ -128,8 +166,8 @@ web/                                  # Frontend: React SPA
 ├── .env.example
 └── package.json
 
-docs/superpowers/                     # spec và plan của Block 6
-evidence/                             # minh chứng; hiện chỉ có .gitkeep
+docs/superpowers/                     # spec và plan của Block 6, Block 7
+evidence/                             # minh chứng (bug-like-wildcard.md: lỗi % _ trước/sau khi sửa)
 README.md
 .gitignore                            # node_modules/, .env, dist/
 ```
@@ -161,17 +199,23 @@ Mở `api/.env` và điền:
 | `DIRECT_URL` | `prisma db push`. Supabase **Session pooler**, cổng `5432` |
 | `PORT` | Cổng Express, mặc định `3000` |
 | `CORS_ORIGIN` | Origin của SPA. `.env.example` đặt `http://localhost:5173`. Không có `/` ở cuối; nhiều origin cách nhau bằng dấu phẩy |
+| `LOG_SQL` | Không bắt buộc. `LOG_SQL=1` in mọi câu SQL Prisma gửi tới PostgreSQL (dùng để lấy bằng chứng truy vấn, mục 11.4) |
 
 Nếu chỉ có một chuỗi Session pooler, có thể gán cùng chuỗi cho cả `DATABASE_URL` và
 `DIRECT_URL` (bỏ `?pgbouncer=true`) để chạy được.
 
-Tạo bảng, nạp dữ liệu mẫu, chạy server:
+Tạo bảng, bật tìm kiếm, nạp dữ liệu mẫu, chạy server:
 
 ```bash
-npx prisma db push
-npm run db:seed
+npm run db:push      # tạo/đồng bộ bảng theo schema.prisma
+npm run db:search    # pg_trgm + index GIN (prisma/search.sql)
+npm run db:seed      # xóa dữ liệu cũ, nạp 1.500 món (~20 giây với Supabase)
 npm run dev
 ```
+
+> **Chạy lại `npm run db:search` sau mỗi lần `npm run db:push`.** Schema Prisma không mô tả được
+> index biểu thức (full-text), nên `db push` có thể xóa các index không có trong schema. File SQL
+> dùng `IF NOT EXISTS`, chạy lại bao nhiêu lần cũng được.
 
 `npm run dev` dùng `node --watch`. API chạy tại `http://localhost:3000`; kiểm tra nhanh:
 
@@ -208,6 +252,7 @@ cổng), trình duyệt sẽ chặn request và SPA hiện khung "Không tải �
 | `npm run dev` | `node --watch src/server.js` |
 | `npm start` | `node src/server.js` |
 | `npm run db:push` | `prisma db push` (đồng bộ schema, Code-first) |
+| `npm run db:search` | `prisma db execute --file prisma/search.sql`: bật `pg_trgm`, tạo index tìm kiếm |
 | `npm run db:seed` | `prisma db seed` → `node prisma/seed.js`, **xóa dữ liệu cũ** rồi nạp lại |
 | `npm test` | `node --test "test/**/*.test.js"` |
 | `npm run acceptance` | Chạy `scripts/acceptance.mjs` (cần API đang chạy) |
@@ -249,18 +294,50 @@ database.
 | Món ăn → đầu bếp (nhiều – một) | `Dish.chefId` → `Chef.id`, `onDelete: SetNull` | Xóa đầu bếp: món vẫn còn, `chefId = null`; giao diện hiện "Chưa phân công" |
 | Món ăn ↔ nguyên liệu (nhiều – nhiều, có định lượng) | Bảng nối `DishIngredient`, `onDelete: Cascade` ở cả hai khóa ngoại | Xóa món hoặc nguyên liệu: các dòng công thức liên quan bị xóa theo |
 
-### Dữ liệu mẫu (`api/prisma/seed.js`)
+### Migration tìm kiếm (`api/prisma/search.sql`)
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Full-text: biểu thức PHẢI trùng y hệt biểu thức trong truy vấn thì index mới được dùng
+CREATE INDEX IF NOT EXISTS dishes_fts_idx ON dishes
+  USING GIN (to_tsvector('simple', name || ' ' || coalesce(description, '')));
+
+-- Trigram trên tên: tăng tốc ILIKE '%...%' của basic/advanced
+CREATE INDEX IF NOT EXISTS dishes_name_trgm_idx ON dishes USING GIN (name gin_trgm_ops);
+```
+
+Trên Supabase của nhóm, `pg_trgm` được cài vào schema `public`; kiểm tra bằng
+`SELECT extname, extnamespace::regnamespace FROM pg_extension WHERE extname = 'pg_trgm'`.
+
+### Dữ liệu mẫu (`api/prisma/catalog.js`, `api/prisma/seed.js`)
 
 | Bảng | Số bản ghi | Ghi chú |
 | --- | --- | --- |
-| `dishes` | 51 | Khai vị 9, Món chính 15, Món phụ 9, Tráng miệng 9, Đồ uống 9. Pizza Margherita đặt `available: false` |
+| `dishes` | **1.500** | 51 món viết tay của Block 6 + 1.449 món sinh tự động. Khai vị 276, Món chính 670, Món phụ 157, Tráng miệng 188, Đồ uống 209; 213 món `available: false` |
 | `chefs` | 5 | Bếp Á, steak/món Âu, bếp trưởng điều hành, bếp Ý, bếp bánh ngọt |
-| `ingredients` | 45 | Đơn vị như kg, gram, ml, bó, quả, ổ... |
-| `dish_ingredients` | Mỗi món 1 đến 5 dòng | Công thức cho một phần ăn |
+| `ingredients` | 103 | 45 nguyên liệu cũ + 58 nguyên liệu mới (mực, cua, sả, nấm rơm, trân châu...) |
+| `dish_ingredients` | 5.094 | Mỗi món 1 đến 6 dòng, định lượng nhân theo khẩu phần |
 | `bookings` | 0 | Seed xóa toàn bộ đặt bàn cũ |
 
-Seed xóa theo thứ tự `bookings` → `dish_ingredients` → `dishes` → `chefs` → `ingredients`,
-nên chạy lại bao nhiêu lần cũng ra cùng một trạng thái.
+Cách sinh món (`buildCatalog()`):
+
+- 47 **mẫu món** (Phở, Bún, Cơm, Mỳ Ý, Pizza, Lẩu, Chè, Trà, Cà phê...), mỗi mẫu có công thức lõi
+  và 3–9 **biến thể** (ví dụ Phở: bò tái, gà, tái nạm, chay...; mỗi biến thể thêm nguyên liệu và
+  chênh giá).
+- Nhân với **phong cách** ("", "đặc biệt", "kiểu nhà làm") và **khẩu phần** ("", "phần nhỏ",
+  "phần lớn", "phần gia đình", "suất trưa"; đồ uống: "ly nhỏ", "ly lớn", "bình 1 lít", "ít
+  đường"). Giá và định lượng nhân theo hệ số của phong cách/khẩu phần.
+- Xáo trộn bằng PRNG có seed cố định (`mulberry32(20261030)`) rồi lấy đủ 1.500 món, bỏ tên trùng.
+  **Mỗi lần seed ra đúng cùng một thực đơn**, nên kết quả tìm kiếm trong README tái hiện được.
+- Mô tả nêu nguyên liệu chính, ví dụ "Món ruột của nhà hàng: phở bò tái, làm từ thịt bò thăn
+  (tái), bánh phở tươi, xương bò." — để tìm toàn văn theo nguyên liệu có kết quả.
+- Ba món có ký tự đặc biệt trong tên để kiểm tra escape: `Combo 100% bò Úc`, `Bánh 50% đường`,
+  `Trà_sữa_nhà_làm`.
+
+`seed.js` xóa theo thứ tự `bookings` → `dish_ingredients` → `dishes` → `chefs` → `ingredients`,
+rồi ghi bằng `createMany` (đầu bếp, nguyên liệu, món, công thức), lấy lại id theo tên (tên không
+trùng). Chạy lại bao nhiêu lần cũng ra cùng một trạng thái.
 
 ## 7. Hợp đồng phản hồi của API
 
@@ -364,14 +441,29 @@ Danh sách nhận `?page` và `?pageSize`:
 
 ### 8.2. Query riêng của danh sách món
 
-`GET /api/dishes`
+`GET /api/dishes` (đọc bằng `parseDishSearch()` trong `api/src/utils/validators.js`)
 
-| Tham số | Ý nghĩa |
-| --- | --- |
-| `q` | Tên chứa chuỗi, không phân biệt hoa thường. `q` là mảng (ví dụ `?q[]=x`) hoặc không phải chuỗi thì bỏ qua |
-| `category` | Một trong 5 danh mục; giá trị lạ coi như "Tất cả" |
-| `sort` | `default`, `newest`, `price-asc`, `price-desc`, `name-asc`; giá trị lạ coi như `default` |
-| `page`, `pageSize` | Như bảng trên |
+| Tham số | Ý nghĩa | Sai → `VALIDATION_FAILED` (`error.fields.<tham số>`) |
+| --- | --- | --- |
+| `mode` | `basic` (mặc định), `advanced`, `fulltext`, `fuzzy` | Giá trị khác: "Kiểu tìm kiếm không hợp lệ." |
+| `q` | Từ khóa; quy tắc so khớp theo `mode` (mục 11). Mảng (`?q[]=x`) hoặc chuỗi trắng = không có từ khóa | Dài hơn 100 ký tự |
+| `category` | Một trong 5 danh mục, dùng ở **mọi** mode; giá trị lạ coi như "Tất cả" | — |
+| `minPrice`, `maxPrice` | Chỉ ở `advanced`. Giá từ/đến (VNĐ, tính cả hai đầu) | Không phải số nguyên không âm ≤ 2 147 483 647; `minPrice > maxPrice` báo ở `maxPrice` |
+| `available` | Chỉ ở `advanced`. `true` = còn món, `false` = tạm hết | Giá trị khác `true`/`false` |
+| `ingredient` | Chỉ ở `advanced`. Món có ít nhất một nguyên liệu mà tên chứa chuỗi này | — |
+| `sort` | `default`, `newest`, `price-asc`, `price-desc`, `name-asc`; giá trị lạ coi như `default`. **Bị bỏ qua** khi `fulltext`/`fuzzy` có từ khóa (xếp theo độ liên quan) | — |
+| `page`, `pageSize` | Như bảng trên | — |
+
+Quy ước "rỗng / false / 0" (slide 27):
+
+- Thiếu tham số hoặc chuỗi trắng = **không có tiêu chí**.
+- `available=false` là tiêu chí thật: chỉ món tạm hết.
+- `minPrice=0` là một cận giá hợp lệ, không phải giá trị rỗng.
+- Tham số nâng cao gửi kèm mode khác `advanced` (ví dụ còn sót trên URL sau khi đổi mode) bị
+  **bỏ qua, không kiểm tra**, nên đổi mode không bao giờ sinh lỗi.
+
+Phân trang trả thêm `meta.mode` (mode đã áp dụng). Không có kết quả là `ok: true`,
+`data: []`, `meta.total: 0`.
 
 Mỗi món trong danh sách kèm `chef` và `_count.ingredients`. Chi tiết món kèm `chef` và
 `ingredients` (mỗi dòng có `ingredientId`, `quantity`, `ingredient`), sắp theo tên nguyên liệu.
@@ -384,7 +476,7 @@ sách món phụ trách; chi tiết nguyên liệu kèm các món sử dụng n�
 | Request | Mục đích | `data` |
 | --- | --- | --- |
 | `GET /api/stats` | Số liệu đầu trang thực đơn | `{ dishes, categories, chefs, minPrice, tiles: [{ name, count, imageUrl }] }` |
-| `GET /api/options` | Hằng số dùng chung cho form/bộ lọc | `{ categories, sorts: [{ key, label }], units, booking: { slots, maxGuests, maxDays, statuses, minDate, maxDate } }` |
+| `GET /api/options` | Hằng số dùng chung cho form/bộ lọc | `{ categories, sorts: [{ key, label }], searchModes: [{ key, label }], units, booking: { slots, maxGuests, maxDays, statuses, minDate, maxDate } }` |
 | `POST /api/bookings` | Khách gửi yêu cầu đặt bàn | Bản ghi vừa tạo, gồm `code` 8 ký tự hex |
 | `GET /api/bookings/:code` | Khách tra cứu yêu cầu của mình | Bản ghi đặt bàn; mã sai định dạng/không có → `NOT_FOUND` |
 | `GET /api/admin/bookings?show=all` | Danh sách đặt bàn | Mặc định chỉ từ hôm nay (giờ Việt Nam); `show=all` lấy cả lịch đã qua; sắp theo `bookedAt`, rồi `id` |
@@ -404,14 +496,14 @@ khách tối đa 20, đặt trước tối đa 60 ngày, cùng `minDate`/`maxDat
 | URL | Trang | Dữ liệu dùng |
 | --- | --- | --- |
 | `/` | Chuyển hướng sang `/dishes` | — |
-| `/dishes?q&category&sort&page` | Thực đơn: số liệu, ô danh mục, tìm kiếm, lọc, sắp xếp, phân trang | `GET /api/stats`, `GET /api/options`, `GET /api/dishes` |
+| `/dishes?view&mode&q&category&minPrice&maxPrice&available&ingredient&sort&page` | Thực đơn: số liệu, ô danh mục, tìm kiếm 4 mode, lọc, sắp xếp, 3 kiểu phân trang | `GET /api/stats`, `GET /api/options`, `GET /api/dishes` |
 | `/dishes/:id` | Chi tiết món, đầu bếp, công thức | `GET /api/dishes/:id` |
 | `/about` | Giới thiệu nhà hàng và đội ngũ đầu bếp | `GET /api/chefs`, `GET /api/stats` |
 | `/bookings/new` | Form đặt bàn | `GET /api/options`, `POST /api/bookings` |
 | `/bookings/:code` | Xác nhận yêu cầu đặt bàn | `GET /api/bookings/:code`, `GET /api/options` |
 | `/admin` | Chuyển hướng sang `/admin/dishes` | — |
 | `/admin/bookings?show=all` | Danh sách đặt bàn, nút đổi trạng thái | `GET/PATCH /api/admin/bookings` |
-| `/admin/dishes?sort&page` | Bảng món ăn | `GET /api/dishes`, `GET /api/options` |
+| `/admin/dishes?mode&q&category&minPrice&maxPrice&available&ingredient&sort&page` | Bảng món ăn + tìm kiếm 4 mode, phân trang số trang | `GET /api/dishes`, `GET /api/options` |
 | `/admin/dishes/new` | Form thêm món | `GET /api/chefs`, `/api/ingredients`, `/api/options`; `POST /api/dishes` |
 | `/admin/dishes/:id` | Chi tiết món trong quản trị | `GET /api/dishes/:id`; đích sau khi thêm/sửa |
 | `/admin/dishes/:id/edit` | Form sửa, điền sẵn từ DB | `GET /api/dishes/:id` + options; `PATCH /api/dishes/:id` |
@@ -428,8 +520,11 @@ khách tối đa 20, đặt trước tối đa 60 ngày, cùng `minDate`/`maxDat
 | `/admin/ingredients/:id/delete` | Trang xác nhận; nêu số món sẽ bị gỡ khỏi công thức | `GET /api/ingredients/:id`; `DELETE /api/ingredients/:id` |
 | `*` | Trang không tìm thấy | — |
 
-Toàn bộ trạng thái bộ lọc (`q`, `category`, `sort`, `page`, `show`) nằm trong URL search
-params, nên link chia sẻ được và Reload giữ nguyên ngữ cảnh.
+Toàn bộ trạng thái tìm kiếm, bộ lọc và kiểu phân trang (`view`, `mode`, `q`, `category`,
+`minPrice`, `maxPrice`, `available`, `ingredient`, `sort`, `page`, `show`) nằm trong URL search
+params, nên link chia sẻ được và Reload giữ nguyên ngữ cảnh. `web/src/lib/dish-search.js` là
+nơi duy nhất chuyển URL ⇄ tiêu chí ⇄ query API (`readCriteria`, `writeParams`, `apiQuery`,
+`criteriaKey`); chỉ ghi lên URL các giá trị khác mặc định.
 
 ### 9.2. Tầng gọi API
 
@@ -475,12 +570,13 @@ sách; không tải lại document.
 
 ### 9.4. Luồng dữ liệu tiêu biểu
 
-**Xem thực đơn** (`/dishes?q=phở&category=Món chính&page=2`)
+**Xem thực đơn** (`/dishes?mode=fulltext&q=phở&category=Món chính&page=2`)
 
-1. `MenuPage` đọc `q`, `category`, `sort`, `page` từ URL.
+1. `MenuPage` đọc tiêu chí bằng `readCriteria(searchParams)`, kiểu phân trang `view` và `page`.
 2. Gọi song song `GET /api/stats`, `GET /api/options`, và
-   `GET /api/dishes?q=phở&category=Món%20chính&sort=default&page=2&pageSize=9`.
-3. API chuẩn hoá query, đếm tổng rồi lấy đúng trang bằng `skip`/`take`.
+   `GET /api/dishes?mode=fulltext&q=phở&category=Món%20chính&page=2&pageSize=9`.
+3. API đọc tham số bằng `parseDishSearch`, chọn tập kết quả (full-text), đếm tổng, xếp theo điểm
+   rồi lấy đúng trang bằng `LIMIT`/`OFFSET`.
 4. JSON trả `data` + `meta`; component vẽ lưới món và thanh phân trang.
 
 **Thêm món** (`/admin/dishes/new`)
@@ -525,11 +621,14 @@ sách; không tải lại document.
 
 ## 10. Phân trang
 
-API dùng phân trang offset (`skip`/`take`):
+### 10.1. Phân trang ở server (offset)
+
+Cả ba kiểu hiển thị dùng **cùng một API phân trang** (`GET /api/dishes?page&pageSize`):
 
 ```text
-skip = (page - 1) × pageSize
+skip = (page - 1) × pageSize          # SQL: LIMIT pageSize OFFSET skip
 take = pageSize
+totalPages = ceil(total / pageSize)
 ```
 
 `paginate(total, rawPage, pageSize)` trong `api/src/utils/helpers.js`:
@@ -542,30 +641,203 @@ function paginate(total, rawPage, pageSize) {
 }
 ```
 
-Trang vượt quá được kẹp về trang cuối thay vì trả lỗi hay danh sách rỗng. `page` chỉ là điều
-kiện hiển thị; `NOT_FOUND` chỉ dành cho bản ghi không tồn tại.
+- Trang vượt quá được kẹp về trang cuối (áp dụng cho cả 4 mode tìm kiếm). `page` sai định dạng
+  coi như trang 1. `NOT_FOUND` chỉ dành cho bản ghi không tồn tại.
+- `total` là số món của **toàn bộ tập kết quả**, không phải số món của trang hiện tại; nó được đếm
+  bằng **cùng điều kiện** (`where` hoặc cùng đoạn SQL `WHERE`) với truy vấn lấy món.
+- Thứ tự luôn ổn định: mỗi kiểu sắp xếp thêm `id` làm khóa phụ (`DISH_SORTS`); full-text/fuzzy
+  xếp theo điểm giảm dần rồi `id` tăng dần. Không có thứ tự ổn định thì một món có thể xuất hiện
+  ở hai trang hoặc bị bỏ qua.
+- Chọn tập kết quả trước (tìm kiếm + lọc), **sau đó** mới sắp xếp và cắt trang.
 
-| Trang | Số dòng mỗi trang | Query giữ lại |
-| --- | --- | --- |
-| `/dishes` | 9 (lưới 3 × 3) | `q`, `category`, `sort` |
-| `/admin/dishes` | 10 | `sort` |
-| `/admin/chefs`, `/admin/ingredients` | 10 | `page` |
-| `GET /api/chefs` | 10 mặc định | `pageSize` |
-| `GET /api/ingredients` | 10 mặc định | `pageSize` |
+| Trang | Số dòng mỗi lần tải | Kiểu hiển thị | Query giữ lại |
+| --- | --- | --- | --- |
+| `/dishes` | 9 (lưới 3 × 3) | Số trang / Tải thêm / Cuộn vô hạn | `view`, tiêu chí tìm kiếm, `sort`, `page` (chỉ kiểu Số trang) |
+| `/admin/dishes` | 10 | Số trang | tiêu chí tìm kiếm, `sort`, `page` |
+| `/admin/chefs`, `/admin/ingredients` | 10 | Số trang | `page` |
 
 `/admin/bookings` không phân trang: mặc định chỉ hiện lịch từ hôm nay trở đi nên danh sách
 ngắn, và nhân viên cần thấy hết lịch sắp tới trên một trang.
 
-Mỗi kiểu sắp xếp món đều thêm `id` làm khóa phụ (`DISH_SORTS`), vì PostgreSQL không bảo đảm thứ
-tự của các dòng cùng giá trị sắp xếp. Thứ tự ổn định tránh việc một món xuất hiện ở hai trang
-hoặc bị bỏ qua khi chuyển trang.
+### 10.2. Ba kiểu hiển thị ở thực đơn
 
-## 11. Luật validate
+Nút **Số trang | Tải thêm | Cuộn vô hạn** nằm cạnh ô sắp xếp (`web/src/components/ViewSwitch.jsx`),
+ghi `?view=pages|more|scroll` lên URL. Đổi kiểu giữ nguyên tìm kiếm và bắt đầu lại từ đầu.
+
+| Kiểu | Hành vi | Code |
+| --- | --- | --- |
+| Số trang (`pages`, mặc định) | Chọn trang để **thay** danh sách đang xem. Mỗi trang là một URL `?page=n` | `MenuPage` + `useApiData` + `Pagination` |
+| Tải thêm (`more`) | Bấm "Tải thêm (x/y)" để **nối** 9 món tiếp theo vào danh sách | `useLoadMore` + `LoadMoreList` |
+| Cuộn vô hạn (`scroll`) | Cuộn gần cuối (còn 200px) thì tự nối phần tiếp theo | `useLoadMore` + `IntersectionObserver` trong `LoadMoreList` |
+
+### 10.3. Trạng thái của Tải thêm / Cuộn vô hạn
+
+`web/src/lib/load-more.js` (hàm thuần, có test) giữ `{ key, items, nextPage, total, pending,
+end, error }`:
+
+- `key` là khóa của lần tìm (`criteriaKey(criteria)` + kiểu hiển thị). Đổi tìm kiếm, bộ lọc,
+  sắp xếp hoặc kiểu → `useLoadMore` **huỷ request đang chạy** (`AbortController`), đưa danh sách
+  về rỗng và tải trang 1. `applyPage` bỏ qua phản hồi có `key` cũ, nên **kết quả của hai lần tìm
+  không bao giờ trộn vào nhau**.
+- Chặn tải tiếp khi `pending` hoặc `end` đang đúng (`canLoad`), nên bấm nhanh hay observer gọi
+  liên tục cũng chỉ có một request mỗi trang.
+- Thành công: nối `data`, bỏ món trùng `id` (offset có thể lệch nếu dữ liệu đổi giữa hai lần
+  tải), rồi tăng `nextPage`.
+- Hết dữ liệu khi `page × pageSize ≥ total` hoặc trang trả về rỗng → hiện "Đã hiện hết N món".
+- Lỗi ở trang sau: giữ các món đã tải, hiện "Không tải được phần tiếp theo. Thử lại" dưới lưới.
+
+Cuộn vô hạn:
+
+```js
+const observer = new IntersectionObserver((entries) => {
+  if (entries.some((entry) => entry.isIntersecting)) loadNext();   // loadNext tự kiểm tra pending/end
+}, { rootMargin: "200px 0px" });
+observer.observe(sentinel);   // sentinel là một <div> đặt SAU lưới món, không phải từng món
+// cleanup: observer.disconnect() khi rời trang, đổi tìm kiếm hoặc sau mỗi lần nối thêm
+```
+
+### 10.4. Mở lại link và thay đổi điều kiện (công bố theo slide 39)
+
+| Thao tác | Số trang | Tải thêm / Cuộn vô hạn |
+| --- | --- | --- |
+| Tìm lại, đổi bộ lọc, đổi sắp xếp | Về trang 1 của kết quả mới | Danh sách mới, bắt đầu từ 9 món đầu |
+| Chuyển trang / tải thêm | Giữ nguyên tiêu chí, chỉ đổi `page` trên URL | Giữ nguyên tiêu chí, nối trang tiếp |
+| "Xóa bộ lọc" | Về `/dishes`, trang 1 | Về `/dishes` (kiểu Số trang) |
+| Reload, copy link sang tab khác | **Khôi phục đúng tiêu chí và đúng trang** | Khôi phục tiêu chí và kiểu hiển thị, **tải lại từ đầu** (URL không lưu số trang đã tải) |
+| Back/Forward | Khôi phục tiêu chí và trang; ô tìm kiếm cập nhật theo URL | Như Reload: tải lại từ đầu, kể cả khi Back từ trang chi tiết món |
+
+Nhóm chọn "tải lại từ đầu" cho Tải thêm / Cuộn vô hạn vì giữ lại hàng trăm món đã tải cần cache
+phía client và khôi phục vị trí cuộn; kiểu Số trang đã đáp ứng nhu cầu "mở lại đúng chỗ".
+
+## 11. Tìm kiếm tại server
+
+### 11.1. Bốn mode
+
+Tìm kiếm luôn chạy ở server trên **toàn bộ** bảng `dishes`; SPA chỉ gửi tiêu chí. Mode quyết
+định **quy tắc so khớp văn bản** của `q`; danh mục áp dụng ở mọi mode.
+
+| Mode | Giao diện | Quy tắc cho `q` | Tiêu chí khác (AND) | Thứ tự |
+| --- | --- | --- | --- | --- |
+| `basic` (Cơ bản) | Một ô từ khóa | Tên **chứa** `q`, không phân biệt hoa/thường (`ILIKE`) | `category` | `sort` |
+| `advanced` (Nâng cao) | Ô từ khóa + giá từ/đến, tình trạng, nguyên liệu | Như `basic` | `category`, `minPrice`, `maxPrice`, `available`, `ingredient` | `sort` |
+| `fulltext` (Toàn văn) | Một ô từ khóa | `to_tsvector('simple', tên + mô tả) @@ plainto_tsquery('simple', q)`: món chứa **mọi từ** của `q` trong tên hoặc mô tả | `category` | `ts_rank` giảm dần, `id` tăng dần |
+| `fuzzy` (Gần đúng) | Một ô từ khóa | `word_similarity(q, name) >= 0.3` (`pg_trgm`): tên có đoạn **gần giống** `q`, chịu được gõ sai | `category` | `word_similarity` giảm dần, `id` tăng dần |
+
+- `basic` và `advanced` với cùng một `q` (không có tiêu chí khác) cho **cùng kết quả**
+  (acceptance kiểm tra).
+- `fulltext`/`fuzzy` không có từ khóa → không có tiêu chí văn bản, hoạt động như `basic` và dùng
+  `sort`.
+- `fulltext` dùng cấu hình `simple` cho **cả document và query** (không stemming, giữ dấu tiếng
+  Việt, chỉ đưa về chữ thường). `description` có thể `NULL` nên document dùng
+  `coalesce(description, '')`.
+- `q` chỉ gồm dấu câu (`!!!`) cho `plainto_tsquery` rỗng → `ok: true`, `total: 0`, không lỗi.
+
+**Ngưỡng fuzzy: `word_similarity ≥ 0.3`** (hằng `FUZZY_THRESHOLD`). Nhóm dùng
+`word_similarity(q, name)` thay vì `similarity(q, name)` vì tên món dài 3–6 từ: `similarity` so
+`q` với **cả tên** nên điểm thấp dù khách gõ đúng một phần. Đo trên Supabase:
+
+| `q` | Tên món | `similarity` | `word_similarity` |
+| --- | --- | --- | --- |
+| `carbonra` | Mỳ Ý Carbonara | 0.41 | 0.67 |
+
+### 11.2. Ký tự đặc biệt là dữ liệu
+
+`%` và `_` là ký tự đại diện của `LIKE`. Prisma `contains` **không** escape chúng (xem lỗi ở mục
+16, câu 4), nên `buildDishWhere` gọi `escapeLike()` trước khi đưa `q` và `ingredient` vào
+`contains`:
+
+| Người dùng nhập | Giá trị gửi Prisma | Mẫu `ILIKE` | Khớp |
+| --- | --- | --- | --- |
+| `100%` | `100\%` | `%100\%%` | Tên chứa đúng `100%` (Combo 100% bò Úc) |
+| `_` | `\_` | `%\_%` | Tên chứa đúng `_` (Trà_sữa_nhà_làm) |
+| `\` | `\\` | `%\\%` | Tên chứa đúng `\` |
+
+PostgreSQL dùng `\` làm ký tự escape mặc định của `LIKE`/`ILIKE` (deck dùng `ESCAPE '!'`; cùng
+ý tưởng). Chuỗi không khớp trả danh sách rỗng, không trả toàn bộ món.
+
+### 11.3. Cách cài đặt (`api/src/db/dish-search.js`)
+
+- `basic`/`advanced`: `buildDishWhere(search)` tạo `where` của Prisma:
+  `name: { contains, mode: "insensitive" }`, `category`, `price: { gte, lte }`, `available`,
+  `ingredients: { some: { ingredient: { name: { contains, mode: "insensitive" } } } }`. Route
+  gọi `prisma.dish.count({ where })` rồi `findMany({ where, orderBy, skip, take })`.
+- `fulltext`/`fuzzy`: `rankedFilterSql(search)` tạo **một** đoạn `WHERE` bằng `Prisma.sql` (tham
+  số hóa), dùng chung cho `countRanked` (`SELECT count(*)`) và `rankedIds` (`SELECT id ...
+  ORDER BY score DESC, id ASC LIMIT/OFFSET`). Sau đó Prisma nạp món kèm `chef` và
+  `_count.ingredients` theo danh sách id, rồi `orderByIds` sắp lại đúng thứ tự xếp hạng.
+- Không có chỗ nào nối chuỗi người dùng vào SQL: mọi giá trị đi qua tham số `$1, $2...`.
+
+### 11.4. SQL thực hiện tại PostgreSQL
+
+Ghi lại bằng `LOG_SQL=1` trên dữ liệu seed (rút gọn danh sách cột và bỏ `BEGIN`/`COMMIT`):
+
+**`basic`** — `/api/dishes?q=phở&page=1`
+
+```sql
+SELECT COUNT(*) FROM (SELECT "dishes"."id" FROM "dishes" WHERE "dishes"."name" ILIKE $1 OFFSET $2) AS "sub"
+SELECT "dishes"."id", "dishes"."name", ... FROM "dishes" LEFT JOIN (SELECT "dishId", COUNT(*) ... GROUP BY "dishId") ...
+  WHERE "dishes"."name" ILIKE $1 ORDER BY "dishes"."id" ASC LIMIT $2 OFFSET $3
+```
+
+**`advanced`** — `/api/dishes?mode=advanced&q=phở&minPrice=0&maxPrice=80000&available=true&ingredient=bò&page=1`
+
+```sql
+SELECT COUNT(*) FROM (SELECT "dishes"."id" FROM "dishes"
+  WHERE ("dishes"."name" ILIKE $1 AND "dishes"."price" >= $2 AND "dishes"."price" <= $3
+    AND "dishes"."available" = $4
+    AND EXISTS(SELECT "t0"."dishId" FROM "dish_ingredients" AS "t0"
+               LEFT JOIN "ingredients" AS "j1" ON ("j1"."id") = ("t0"."ingredientId")
+               WHERE ("j1"."name" ILIKE $5 AND ("dishes"."id") = ("t0"."dishId") ...)))
+  OFFSET $6) AS "sub"
+-- truy vấn lấy món dùng đúng WHERE trên + ORDER BY "dishes"."id" ASC LIMIT ... OFFSET ...
+```
+
+**`fulltext`** — `/api/dishes?mode=fulltext&q=phở bò&page=1`
+
+```sql
+SELECT count(*) AS total FROM dishes
+WHERE to_tsvector('simple', name || ' ' || coalesce(description, '')) @@ plainto_tsquery('simple', $1)
+
+SELECT id FROM dishes
+WHERE to_tsvector('simple', name || ' ' || coalesce(description, '')) @@ plainto_tsquery('simple', $1)
+ORDER BY ts_rank(to_tsvector('simple', name || ' ' || coalesce(description, '')), plainto_tsquery('simple', $2)) DESC, id ASC
+LIMIT $3 OFFSET $4
+
+SELECT "dishes"."id", ... FROM "dishes" ... WHERE "dishes"."id" IN ($1,$2,...,$9)
+```
+
+**`fuzzy`** — `/api/dishes?mode=fuzzy&q=carbonra&page=1`
+
+```sql
+SELECT count(*) AS total FROM dishes WHERE word_similarity($1, name) >= $2
+
+SELECT id FROM dishes
+WHERE word_similarity($1, name) >= $2
+ORDER BY word_similarity($3, name) DESC, id ASC
+LIMIT $4 OFFSET $5
+```
+
+### 11.5. Giao diện tìm kiếm
+
+`web/src/components/SearchForm.jsx` dùng chung cho `/dishes` (trong phần đầu trang) và
+`/admin/dishes` (trên bảng):
+
+- Ô từ khóa + ô chọn kiểu tìm kiếm (danh sách lấy từ `GET /api/options` → `searchModes`).
+- Chọn **Nâng cao** mở thêm: Giá từ, Giá đến (`type="number"`, `min="0"`), Tình trạng (Tất cả /
+  Còn món / Tạm hết), Nguyên liệu.
+- Bấm "Tìm" ghi tiêu chí lên URL và về trang đầu; Back/Forward làm ô nhập cập nhật theo URL.
+- Khi xếp theo độ liên quan (`fulltext`/`fuzzy` có từ khóa), ô sắp xếp được thay bằng chữ
+  "Sắp xếp: Độ liên quan".
+- URL sửa tay sai (`?mode=advanced&minPrice=abc`) → API trả `VALIDATION_FAILED`; trang hiện
+  "Điều kiện tìm kiếm không hợp lệ" kèm thông báo của từng trường và link "Xóa bộ lọc"
+  (`SearchError.jsx`), không phải khung lỗi kết nối.
+
+## 12. Luật validate
 
 Validator nằm ở server (`api/src/utils/validators.js`) và nhận **body JSON đã đúng kiểu**.
 HTML validation trong SPA chỉ giúp nhập nhanh; API luôn kiểm tra lại.
 
-### 11.1. Món ăn (`POST` đầy đủ, `PATCH` một phần)
+### 12.1. Món ăn (`POST` đầy đủ, `PATCH` một phần)
 
 | Trường | Luật |
 | --- | --- |
@@ -584,7 +856,7 @@ Khi `PATCH`, chỉ các khóa có trong body được kiểm tra và ghi; khóa 
 Lỗi công thức dùng khóa `ingredients` cho lỗi chung và `ingredients.<id>` cho lỗi định lượng
 của từng nguyên liệu.
 
-### 11.2. Đầu bếp và nguyên liệu
+### 12.2. Đầu bếp và nguyên liệu
 
 | Đối tượng | Trường | Luật |
 | --- | --- | --- |
@@ -597,7 +869,7 @@ của từng nguyên liệu.
 `INGREDIENT_UNITS` trong `options` chỉ là gợi ý cho giao diện; API không bắt buộc đơn vị phải
 nằm trong danh sách này.
 
-### 11.3. Đặt bàn
+### 12.3. Đặt bàn
 
 | Trường | Luật |
 | --- | --- |
@@ -610,23 +882,29 @@ nằm trong danh sách này.
 | `note` | Không bắt buộc, tối đa 500 ký tự |
 | `status` (PATCH admin) | `pending`, `confirmed` hoặc `cancelled` |
 
-## 12. Kiểm thử và kiểm tra thủ công
+## 13. Kiểm thử và kiểm tra thủ công
 
-### 12.1. Test tự động
+### 13.1. Test tự động
 
 ```bash
 cd api
-npm test            # app.test.js, validators.test.js, helpers.test.js
+npm test            # 71 test: app, validators, helpers, dish-search, catalog
 ```
 
-Các test này không cần database: phần HTTP dùng `createApp` trên cổng ngẫu nhiên, phần
-validator/helper là hàm thuần. Phần HTTP có thêm hai ca `413` (body quá lớn) và `415`
-(charset không hỗ trợ) để chắc rằng lỗi đọc body vẫn giữ đúng status thay vì thành `500`;
-phần helper có ca `parseId` với id vượt giới hạn `INT4`.
+Các test này không cần database: phần HTTP dùng `createApp` trên cổng ngẫu nhiên, phần còn lại
+là hàm thuần. Phần mới của Block 7:
+
+| File | Kiểm tra |
+| --- | --- |
+| `validators.test.js` | `parseDishSearch`: rỗng / `false` / `0`, giá sai định dạng, `minPrice > maxPrice`, `available` lạ, `mode` lạ, `q` > 100 ký tự, mode khác `advanced` bỏ qua tham số nâng cao |
+| `helpers.test.js` | `escapeLike`: `%`, `_`, `\` thành ký tự thường |
+| `dish-search.test.js` | `where` của basic/advanced (0 và `false` là tiêu chí thật, basic = advanced với cùng `q`); SQL của fulltext (`simple`, tham số `$1`) và fuzzy (`word_similarity`, ngưỡng 0.3); `orderByIds` |
+| `catalog.test.js` | Đúng 1.500 món, tên không trùng, có tên chứa `%`/`_`, công thức 1–6 dòng hợp lệ, ≥ 10% món tạm hết, sinh cố định |
+| `app.test.js` | `GET /api/options` có `searchModes`; tiêu chí sai → HTTP 200 + `VALIDATION_FAILED` |
 
 ```bash
 cd web
-npm test            # client.test.js
+npm test            # 22 test: client, dish-search (URL ⇄ tiêu chí), load-more (nối, khử trùng, bỏ phản hồi cũ)
 npm run build       # kiểm tra SPA build được
 ```
 
@@ -634,12 +912,12 @@ Nếu `node --test` trong môi trường không mở rộng mẫu glob, truyền
 
 ```bash
 # api
-node --test test/app.test.js test/validators.test.js test/helpers.test.js
+node --test test/app.test.js test/validators.test.js test/helpers.test.js test/dish-search.test.js test/catalog.test.js
 # web
-node --test src/api/client.test.js
+node --test src/api/client.test.js src/lib/dish-search.test.js src/lib/load-more.test.js
 ```
 
-### 12.2. Acceptance test
+### 13.2. Acceptance test
 
 Cần API đang chạy và database đã seed:
 
@@ -648,15 +926,34 @@ cd api
 npm run acceptance
 ```
 
-Script kiểm tra các nhóm món ăn (kèm thống kê, tùy chọn và CORS), đầu bếp, nguyên liệu và đặt
-bàn. Mặc định dùng `http://localhost:3000` và origin `http://localhost:5173`; có thể ghi đè
-bằng biến môi trường `API_URL` và `ORIGIN`.
+Script kiểm tra các nhóm món ăn (kèm thống kê, tùy chọn và CORS), **tìm kiếm**, đầu bếp,
+nguyên liệu và đặt bàn. Mặc định dùng `http://localhost:3000` và origin `http://localhost:5173`;
+có thể ghi đè bằng biến môi trường `API_URL` và `ORIGIN`.
+
+Các dòng tìm kiếm của Block 7 (chạy trên 1.500 món đã seed, tất cả PASS):
+
+```text
+PASS dishes: q=% là ký tự thường
+PASS dishes: q=_ là ký tự thường
+PASS search: fulltext q=phở -> tên/mô tả chứa phở
+PASS search: fulltext q chỉ có dấu câu -> rỗng, không lỗi
+PASS search: fuzzy q=carbonra -> Carbonara đứng đầu
+PASS search: basic và advanced cùng q cho cùng kết quả
+PASS search: advanced available=false chỉ món tạm hết
+PASS search: advanced minPrice=0&maxPrice=60000 trong khoảng
+PASS search: advanced ingredient=mozzarella
+PASS search: advanced minPrice=abc -> VALIDATION_FAILED
+PASS search: mode=xyz -> VALIDATION_FAILED
+PASS search: basic bỏ qua tham số nâng cao còn sót
+PASS search: fulltext page vượt -> trang cuối
+PASS search: fuzzy đi hết các trang = total, không trùng
+```
 
 - Bản ghi do script tạo ở ba bảng chính được xóa lại bằng API trong `finally`.
 - **Đặt bàn không có endpoint xóa**, nên các yêu cầu tên `ZZ Acceptance` sẽ còn lại trong DB.
   Chạy `npm run db:seed` để dọn.
 
-### 12.3. Kiểm tra bằng `curl`
+### 13.3. Kiểm tra bằng `curl`
 
 ```bash
 # Danh sách có phân trang
@@ -664,6 +961,13 @@ curl -i "http://localhost:3000/api/dishes?page=1&pageSize=9"
 
 # Tìm kiếm + lọc + sắp xếp
 curl -i "http://localhost:3000/api/dishes?q=ph%E1%BB%9F&category=M%C3%B3n%20ch%C3%ADnh&sort=price-asc"
+
+# Bốn mode tìm kiếm (Block 7)
+curl "http://localhost:3000/api/dishes?q=%25&page=1"                                   # q=% -> 2 món chứa đúng "%"
+curl "http://localhost:3000/api/dishes?mode=advanced&available=false&maxPrice=80000&ingredient=t%E1%BB%8Fi&page=1"
+curl "http://localhost:3000/api/dishes?mode=fulltext&q=ph%E1%BB%9F%20b%C3%B2&page=1"     # phở bò, xếp theo ts_rank
+curl "http://localhost:3000/api/dishes?mode=fuzzy&q=carbonra&page=1"                   # gõ sai vẫn ra Mỳ Ý Carbonara
+curl "http://localhost:3000/api/dishes?mode=advanced&minPrice=500&maxPrice=100"        # VALIDATION_FAILED, fields.maxPrice
 
 # Bản ghi không tồn tại: HTTP 200, ok:false, NOT_FOUND
 curl -i "http://localhost:3000/api/dishes/999999"
@@ -702,7 +1006,7 @@ như trên.
 
 Có thể dùng `api/requests.http` với REST Client của VS Code để chạy cùng bộ request.
 
-### 12.4. Kiểm tra SPA
+### 13.4. Kiểm tra SPA
 
 Mở DevTools → Network:
 
@@ -720,7 +1024,23 @@ Mở DevTools → Network:
 - Đổi trạng thái đặt bàn ở `/admin/bookings` → có `PATCH /api/admin/bookings/:id`, danh sách
   được tải lại.
 
-### 12.5. Kiểm tra CORS
+Block 7 — nghiệm thu theo slide 40:
+
+| Thao tác | Kết quả cần thấy |
+| --- | --- |
+| Kiểu **Số trang**: bấm trang 2, 3 | URL đổi `?page=`; Network: mỗi lần **một** request `GET /api/dishes?...&page=n&pageSize=9`, `data` có 9 món |
+| Kiểu **Tải thêm**: bấm "Tải thêm" 3 lần | 36 món, không trùng; Network: các request `page=2,3,4`; nút bị vô hiệu khi đang tải; cuối danh sách hiện "Đã hiện hết N món" |
+| Kiểu **Cuộn vô hạn**: cuộn xuống | Tự nối 9 món khi còn ~200px tới cuối; dừng khi hết |
+| Đổi danh mục hoặc sắp xếp khi đang Tải thêm | Danh sách bắt đầu lại với điều kiện mới; không còn món của điều kiện cũ (request cũ bị huỷ — Network hiện `(canceled)`) |
+| Tìm "phở" chế độ Toàn văn, chuyển sang trang 2 | URL giữ `mode=fulltext&q=phở`, chỉ đổi `page` |
+| Nâng cao: Tạm hết + Giá đến 80000 + nguyên liệu "tỏi" | Chỉ món tạm hết, giá ≤ 80.000đ, có tỏi trong công thức |
+| Gần đúng "carbonra" | "Mỳ Ý Carbonara" đứng đầu; ô sắp xếp hiện "Sắp xếp: Độ liên quan" |
+| Gõ `%` ở chế độ Cơ bản | 2 món ("Combo 100% bò Úc", "Bánh 50% đường"), không phải cả thực đơn |
+| "Xóa bộ lọc", Reload, mở lại link | Như bảng ở mục 10.4 |
+| Sửa tay `?mode=advanced&minPrice=abc` | Khung "Điều kiện tìm kiếm không hợp lệ" + "Giá từ phải là số nguyên không âm." |
+| `/admin/dishes`: tìm Nâng cao, bấm trang 2 | Bảng giữ tiêu chí; "N món phù hợp · Trang 2/x" |
+
+### 13.5. Kiểm tra CORS
 
 ```bash
 curl -i -X OPTIONS "http://localhost:3000/api/dishes/1" \
@@ -733,7 +1053,7 @@ Kết quả mong đợi: `204`, `Access-Control-Allow-Origin: http://localhost:5
 `*`). Gửi cùng request với `Origin: http://evil.test` sẽ không có header
 `Access-Control-Allow-Origin`.
 
-## 13. Trạng thái triển khai và giới hạn đã biết
+## 14. Trạng thái triển khai và giới hạn đã biết
 
 | Hạng mục | Trạng thái |
 | --- | --- |
@@ -746,9 +1066,12 @@ Kết quả mong đợi: `204`, `Access-Control-Allow-Origin: http://localhost:5
 | SPA: quản trị đầu bếp (danh sách, thêm, chi tiết, sửa, xóa) | Đã có |
 | SPA: quản trị nguyên liệu (danh sách, thêm, chi tiết, sửa, xóa) | Đã có |
 | SPA: quản trị đặt bàn | Đã có |
+| Seed 1.500 món, migration tìm kiếm | Đã có (`npm run db:search`, `npm run db:seed`) |
+| Tìm kiếm 4 mode ở API, thực đơn và trang quản lý món | Đã có |
+| Ba kiểu phân trang ở thực đơn | Đã có |
 | Đăng nhập / phân quyền | **Không có**. Mọi endpoint quản trị đều công khai, nằm ngoài phạm vi bài này; không dùng cho production |
-| Test | Unit test cho API và API client; acceptance script cần API chạy. Không có test end-to-end trình duyệt |
-| Thư mục `evidence/` | Đã có thư mục (kèm `.gitkeep`) nhưng **chưa có ảnh/video minh chứng** |
+| Test | Unit test cho API và SPA (logic thuần); acceptance script cần API chạy. Không có test end-to-end trình duyệt: giao diện ba kiểu phân trang được kiểm tra thủ công theo mục 13.4 |
+| Thư mục `evidence/` | Có `bug-like-wildcard.md` (lỗi `%`/`_`, trước và sau khi sửa). **Ảnh chụp màn hình/Network do nhóm bổ sung** theo danh sách ở mục 17 |
 
 Các điểm cần biết thêm:
 
@@ -758,18 +1081,27 @@ Các điểm cần biết thêm:
 - API không có endpoint xóa đặt bàn; nhân viên chỉ đổi trạng thái.
 - Không có lịch sử migration: project dùng `prisma db push`. Khi triển khai thật nên chuyển
   sang `prisma migrate`.
-- Phân trang offset chậm dần với bảng rất lớn và có thể lặp/sót dòng nếu dữ liệu thay đổi giữa
-  hai lần bấm. Với vài chục món, cách này đổi lấy khả năng nhảy tới trang bất kỳ.
-- `count` và `findMany` là hai truy vấn riêng, không nằm trong transaction; nếu dữ liệu đổi
-  đúng giữa hai truy vấn, "Trang x/y" có thể lệch một trang trong một lần tải.
-- `GET /api/dishes` không có `page` trả toàn bộ danh sách. Đây là chủ ý để form và trang giới
-  thiệu lấy đủ dữ liệu, nhưng sẽ không phù hợp nếu thực đơn rất lớn.
+- Phân trang offset chậm dần với bảng rất lớn (`OFFSET` vẫn phải đọc qua các dòng bị bỏ) và có
+  thể lặp/sót dòng nếu dữ liệu thay đổi giữa hai lần tải. Với 1.500 món thì không đáng kể; đổi
+  lại được nhảy tới trang bất kỳ. Tải thêm/Cuộn vô hạn khử trùng theo `id` nên không hiện một món
+  hai lần, nhưng vẫn có thể sót một món nếu có món bị xóa giữa hai lần tải.
+- Đếm (`count`) và lấy trang là hai truy vấn riêng, không nằm trong transaction; nếu dữ liệu
+  đổi đúng giữa hai truy vấn, "Trang x/y" có thể lệch một trang trong một lần tải.
+- `GET /api/dishes` không có `page` vẫn trả **toàn bộ** danh sách (giữ hành vi Block 6). Với
+  1.500 món phản hồi khoảng **1 MB**; SPA không gọi dạng này cho thực đơn hay bảng quản lý.
+- Full-text dùng cấu hình `simple`: không bỏ dấu, nên "pho" không khớp "phở" (dùng chế độ Gần
+  đúng nếu không gõ dấu được một phần). Không có từ đồng nghĩa hay stemming tiếng Việt.
+- Fuzzy dùng `word_similarity(...) >= 0.3` trong `WHERE` nên PostgreSQL quét tuần tự bảng
+  `dishes` (index trigram chỉ được dùng với toán tử `%`/`<%`). Với 1.500 món, mỗi truy vấn vẫn
+  nhanh; bảng lớn hơn nên chuyển sang `q <% name` và đặt `pg_trgm.word_similarity_threshold`.
+- Index full-text và trigram nằm ngoài schema Prisma: chạy lại `npm run db:search` sau mỗi
+  `db:push`.
 - Khi triển khai SPA lên static host, cần cấu hình fallback mọi đường dẫn về `index.html` để
   deep link như `/dishes/1` hoạt động. Vite dev và `vite preview` đã làm việc này sẵn.
 - `VITE_API_URL` và `CORS_ORIGIN` là hai cấu hình phải khớp nhau; đổi cổng một bên mà không
   đổi bên kia sẽ khiến SPA không gọi được API.
 
-## 14. Quyết định kỹ thuật
+## 15. Quyết định kỹ thuật
 
 | Quyết định | Lý do | Đánh đổi |
 | --- | --- | --- |
@@ -787,8 +1119,113 @@ Các điểm cần biết thêm:
 | Seed xóa trước rồi nạp | Chạy lại luôn ra cùng trạng thái, tiện trước khi demo | Xóa cả đặt bàn và dữ liệu người dùng thêm |
 | Tailwind qua PostCSS | Bản build thật, không phụ thuộc CDN; giữ bảng màu thương hiệu | Cần `npm run build` khi triển khai |
 | Không dùng `dangerouslySetInnerHTML` | React tự escape dữ liệu; giảm nguy cơ XSS | Không render được HTML tùy ý từ API |
+| Phân trang, lọc, sắp xếp ở **server** (Block 7) | 1.500 món: tải hết về browser là ~1 MB; lọc/sắp ở client chỉ đúng trên phần đã tải | Mỗi thao tác là một request; cần API phản hồi nhanh |
+| Prisma cho basic/advanced, SQL tham số hóa cho fulltext/fuzzy | Giữ code Prisma sẵn có (quan hệ, đếm nguyên liệu); Prisma không có full-text/trigram cho PostgreSQL | Hai cách truy vấn; ranked mode mất thêm một truy vấn nạp món theo id |
+| Migration bằng file SQL (`db:search`) | `db push` không tạo được extension và index biểu thức | Phải nhớ chạy lại sau `db:push` |
+| `word_similarity` thay vì `similarity` | Tên món nhiều từ; người dùng gõ một phần tên (mục 11.1) | Khớp rộng hơn với từ khóa ngắn |
+| Tham số nâng cao bị bỏ qua (không báo lỗi) ở mode khác `advanced` | Đổi mode trên giao diện không sinh lỗi từ giá trị còn sót | Gửi `minPrice` với `mode=basic` không có tác dụng và không được báo |
+| Tải thêm/Cuộn vô hạn mở lại từ đầu | Không cần cache phía client và khôi phục vị trí cuộn | Reload/Back mất phần đã tải; muốn mở lại đúng chỗ thì dùng kiểu Số trang |
+| Seed sinh cố định bằng PRNG có seed | Kết quả tìm kiếm, số liệu trong README và bằng chứng tái hiện được | Món sinh tự động có tên/mô tả theo khuôn mẫu |
 
-## 15. Tổng kết
+## 16. Trình bày quyết định của nhóm
+
+### Câu 1. Chức năng nào dùng client paging, server paging hoặc AJAX?
+
+| Chức năng | Phân trang | Cập nhật giao diện | Lý do |
+| --- | --- | --- | --- |
+| Thực đơn `/dishes` — Số trang | **Server** (`LIMIT/OFFSET`) | **AJAX**: SPA gọi `GET /api/dishes?page=n&pageSize=9`, React vẽ lại lưới; URL đổi bằng History API, không tải lại trang HTML | Mỗi trang chỉ 9 món (~5,6 KB); `?page=n` trên URL nên Reload/copy link mở đúng trang |
+| Thực đơn — Tải thêm | **Server** | **AJAX**, nối kết quả vào danh sách đang có | Người dùng lướt liên tục; mỗi lần bấm chỉ tải 9 món tiếp theo |
+| Thực đơn — Cuộn vô hạn | **Server** | **AJAX**, kích hoạt bằng `IntersectionObserver` | Như Tải thêm, không cần bấm |
+| Quản lý món `/admin/dishes` | **Server**, 10 dòng/trang | **AJAX** | Nhân viên cần nhảy tới trang bất kỳ và mở lại đúng trang để sửa tiếp |
+| Quản lý đầu bếp, nguyên liệu | **Server**, 10 dòng/trang | **AJAX** | Giữ như Block 6 |
+| Đặt bàn `/admin/bookings` | Không phân trang | AJAX | Mặc định chỉ lịch từ hôm nay, danh sách ngắn |
+
+Nhóm **không dùng client paging**: với 1.500 món, tải toàn bộ là ~1 MB JSON cho mỗi lần mở
+trang, trong khi người dùng thường chỉ xem vài chục món đầu. Server paging chỉ tải đúng phần
+cần xem; khi chuyển trang chỉ có một request nhỏ.
+
+### Câu 2. Filter và sort đặt ở đâu, áp dụng cho dữ liệu nào?
+
+| Thao tác | Đặt ở | Áp dụng cho |
+| --- | --- | --- |
+| Lọc danh mục (ô danh mục / nút "Tất cả, Khai vị...") | Server, mọi mode | **Toàn bộ 1.500 món**, trước khi phân trang |
+| Lọc khoảng giá, tình trạng, nguyên liệu | Server, mode Nâng cao | Toàn bộ món, kết hợp AND với từ khóa và danh mục |
+| Tìm kiếm (4 mode) | Server | Toàn bộ món |
+| Sắp xếp (Mặc định, Mới nhất, Giá ↑/↓, Tên A→Z) | Server, `ORDER BY ... , id` | **Toàn bộ tập kết quả** sau khi lọc, trước khi cắt trang |
+| Xếp theo độ liên quan | Server, `ts_rank` / `word_similarity` | Toàn bộ tập kết quả của fulltext/fuzzy |
+
+Không có thao tác nào chỉ lọc/sắp trên trang đang hiển thị: nếu lọc ở client sau khi mới tải 9
+món, kết quả "Giá thấp → cao" chỉ đúng trong 9 món đó chứ không đúng với cả thực đơn (slide 19).
+Thứ tự luôn là: **chọn tập kết quả → đếm `total` cùng điều kiện → sắp xếp → cắt trang**.
+
+### Câu 3. Network cho thấy tải toàn bộ hay từng phần?
+
+**Từng phần.** Mở DevTools → Network → lọc `Fetch/XHR` trên `/dishes`:
+
+| Thao tác | Request trong Network | Kích thước phản hồi |
+| --- | --- | --- |
+| Mở `/dishes` | `GET /api/dishes?page=1&pageSize=9` (+ `/api/stats`, `/api/options`) | ~5,6 KB, `data` 9 món, `meta.total = 1500` |
+| Bấm trang 2 | `GET /api/dishes?page=2&pageSize=9` | ~5,6 KB |
+| Tìm Toàn văn "phở" | `GET /api/dishes?mode=fulltext&q=phở&page=1&pageSize=9` | ~6,3 KB |
+| Tải thêm 3 lần | 3 request `page=2,3,4` | mỗi request 9 món |
+| (so sánh) tải toàn bộ `GET /api/dishes` | không được SPA gọi ở thực đơn | **~1 MB** |
+
+`meta.total` cho biết tổng số món của kết quả (để tính số trang và biết khi nào hết) mà không
+cần tải chúng về.
+
+### Câu 4. Nhóm đã phát hiện lỗi nào và chứng minh sửa đúng ra sao?
+
+**Lỗi:** tìm `%` hoặc `_` trả về **toàn bộ thực đơn**. Ô tìm kiếm của Block 6 dùng Prisma
+`name: { contains: q, mode: "insensitive" }`. Prisma sinh `name ILIKE '%' || q || '%'` nhưng
+**không escape** `%` và `_` trong `q`, nên `q=%` thành mẫu `%%%` (khớp mọi tên) và `q=_` thành
+`%_%` (khớp mọi tên có ít nhất một ký tự). Đây đúng là tình huống slide 25 cảnh báo.
+
+**Cách tái hiện** (seed Block 6, 51 món, không món nào có `%`/`_` trong tên):
+
+```bash
+curl "http://localhost:3000/api/dishes?q=%25&page=1&pageSize=1"   # kỳ vọng total 0, thực tế 51
+curl "http://localhost:3000/api/dishes?q=%5F&page=1&pageSize=1"   # kỳ vọng total 0, thực tế 51
+```
+
+**Bằng chứng trước khi sửa:** commit `407ae17` ("test: q=% và q=_ trả toàn bộ món (lỗi, chưa
+sửa)") thêm hai dòng acceptance; chạy trên code chưa sửa:
+
+```text
+FAIL dishes: q=% là ký tự thường — total = 51, bằng toàn bộ 51 món
+FAIL dishes: q=_ là ký tự thường — total = 51, bằng toàn bộ 51 món
+```
+
+**Sửa:** commit `83f981e` thêm `escapeLike()` (`api/src/utils/helpers.js`) thêm `\` trước `\`,
+`%`, `_`; mọi chỗ dùng `contains` cho từ khóa và nguyên liệu đi qua hàm này.
+
+**Bằng chứng sau khi sửa:**
+
+- Hai dòng acceptance trên chuyển thành `PASS`, phản hồi `total: 0` với seed 51 món.
+- Unit test `escapeLike` (`api/test/helpers.test.js`) và `buildDishWhere` (`dish-search.test.js`)
+  giữ hành vi này.
+- Với seed 1.500 món (có 3 món chứa ký tự đặc biệt): `q=%` → 2 món ("Combo 100% bò Úc", "Bánh
+  50% đường"), `q=_` → 1 món ("Trà_sữa_nhà_làm").
+
+Toàn bộ log trước/sau: `evidence/bug-like-wildcard.md`.
+
+## 17. Bằng chứng nộp
+
+| Yêu cầu (slide 42) | Bằng chứng | Ở đâu |
+| --- | --- | --- |
+| Số bản ghi trong Supabase và script seed ≥ 1.000 món | `SELECT count(*) FROM dishes` → **1500**; `ingredients` 103, `dish_ingredients` 5.094. Script: `api/prisma/seed.js` + `api/prisma/catalog.js`, chạy `npm run db:seed` | Mục 6; ảnh Table Editor/SQL Editor của Supabase: `evidence/` (nhóm bổ sung) |
+| Demo ba kiểu hiển thị phân trang và filter/sort | Kịch bản ở mục 13.4 | Video/ảnh: `evidence/` (nhóm bổ sung) |
+| URL search, Network và query tại PostgreSQL | URL mẫu ở mục 13.3; Network ở câu 3 mục 16; SQL thật (`LOG_SQL=1`) ở mục 11.4 | Ảnh Network: `evidence/` (nhóm bổ sung) |
+| Một lỗi đã phát hiện, cách tái hiện và bằng chứng sau khi sửa | Lỗi `%`/`_` (câu 4 mục 16) | `evidence/bug-like-wildcard.md`, commit `407ae17` (trước) và `83f981e` (sau) |
+
+Ảnh nên chụp cho `evidence/`:
+
+1. Supabase SQL Editor: `SELECT count(*) FROM dishes;` = 1500.
+2. `/dishes` ở ba kiểu (Số trang trang 2, Tải thêm sau vài lần bấm, Cuộn vô hạn) kèm tab Network.
+3. Bốn mode tìm kiếm với URL trên thanh địa chỉ (ví dụ các URL ở mục 13.3).
+4. Terminal API chạy với `LOG_SQL=1` khi tìm Toàn văn và Gần đúng.
+5. `/admin/dishes` tìm Nâng cao, đang ở trang 2.
+
+## 18. Tổng kết
 
 - **Dữ liệu nằm trong database; mỗi lần tải trang, SPA đọc lại qua API.** Không trang nào nhận
   bản ghi từ trang trước; chi tiết món và form sửa đều lấy dữ liệu theo `id` trong URL.
@@ -801,3 +1238,9 @@ Các điểm cần biết thêm:
 - **Phân trang, lọc, sắp xếp và trạng thái điều hướng đều đi qua URL/API.** Link chia sẻ được
   và Reload vẫn đúng ngữ cảnh. Giá trị đang gõ trong form chỉ nằm trong bộ nhớ cho tới khi
   gửi; dữ liệu đã ghi luôn đọc lại từ database.
+- **Thao tác trên toàn bộ kết quả thì làm ở server.** Tìm kiếm, lọc, sắp xếp chạy trên cả 1.500
+  món rồi mới cắt trang; browser chỉ nhận phần đang xem. Ba kiểu hiển thị chỉ khác cách **ghép
+  các trang** ở giao diện, còn API phân trang là một.
+- **Ký tự người dùng nhập là dữ liệu.** `%`, `_` được escape; mọi giá trị vào SQL đều là tham số.
+- **Chọn quy tắc so khớp theo nhu cầu:** chứa chuỗi (basic/advanced), từ trong tên + mô tả
+  (full-text), gần đúng khi gõ sai (fuzzy) — và công bố rõ cấu hình (`simple`, ngưỡng 0.3).
