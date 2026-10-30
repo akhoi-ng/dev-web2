@@ -6,6 +6,7 @@ const {
   validateIngredient,
   validateBooking,
   validateBookingStatus,
+  parseDishSearch,
 } = require("../src/utils/validators");
 
 const chefs = [{ id: 1 }];
@@ -191,4 +192,70 @@ test("validateBookingStatus", () => {
   assert.equal(validateBookingStatus({}).fields.status, "Trạng thái không hợp lệ.");
   assert.equal(validateBookingStatus({ status: "toString" }).fields.status, "Trạng thái không hợp lệ.");
   assert.deepEqual(validateBookingStatus({ status: "confirmed" }), { fields: {}, data: { status: "confirmed" } });
+});
+
+const NO_SEARCH = { mode: "basic", q: "", category: "", minPrice: null, maxPrice: null, available: null, ingredient: "" };
+
+test("parseDishSearch: không có tham số -> basic, không tiêu chí", () => {
+  assert.deepEqual(parseDishSearch({}), { fields: {}, search: NO_SEARCH });
+  assert.deepEqual(parseDishSearch({ mode: "" }).search, NO_SEARCH);
+});
+
+test("parseDishSearch advanced: false và 0 là tiêu chí thật", () => {
+  const { fields, search } = parseDishSearch({ mode: "advanced", available: "false", minPrice: "0" });
+  assert.deepEqual(fields, {});
+  assert.equal(search.available, false);
+  assert.equal(search.minPrice, 0);
+  assert.equal(parseDishSearch({ mode: "advanced", available: "true" }).search.available, true);
+});
+
+test("parseDishSearch advanced: chuỗi rỗng / khoảng trắng là không có tiêu chí", () => {
+  const { fields, search } = parseDishSearch({ mode: "advanced", minPrice: "", maxPrice: "  ", available: "", ingredient: " " });
+  assert.deepEqual(fields, {});
+  assert.deepEqual(search, { ...NO_SEARCH, mode: "advanced" });
+});
+
+test("parseDishSearch advanced: giá sai định dạng", () => {
+  for (const bad of ["abc", "-1", "1.5", "2147483648", "1e3"]) {
+    assert.equal(parseDishSearch({ mode: "advanced", minPrice: bad }).fields.minPrice, "Giá từ phải là số nguyên không âm.", bad);
+    assert.equal(parseDishSearch({ mode: "advanced", maxPrice: bad }).fields.maxPrice, "Giá đến phải là số nguyên không âm.", bad);
+  }
+  assert.equal(parseDishSearch({ mode: "advanced", minPrice: ["1", "2"] }).fields.minPrice, "Giá từ phải là số nguyên không âm.");
+});
+
+test("parseDishSearch advanced: minPrice > maxPrice báo ở maxPrice", () => {
+  const { fields } = parseDishSearch({ mode: "advanced", minPrice: "500", maxPrice: "100" });
+  assert.deepEqual(fields, { maxPrice: "Giá đến phải lớn hơn hoặc bằng giá từ." });
+  assert.deepEqual(parseDishSearch({ mode: "advanced", minPrice: "100", maxPrice: "100" }).fields, {});
+});
+
+test("parseDishSearch advanced: available lạ", () => {
+  assert.equal(parseDishSearch({ mode: "advanced", available: "yes" }).fields.available, "Tình trạng chỉ nhận true hoặc false.");
+});
+
+test("parseDishSearch: mode lạ, q quá dài, q là mảng", () => {
+  assert.equal(parseDishSearch({ mode: "xyz" }).fields.mode, "Kiểu tìm kiếm không hợp lệ.");
+  assert.equal(parseDishSearch({ mode: "toString" }).fields.mode, "Kiểu tìm kiếm không hợp lệ.");
+  assert.equal(parseDishSearch({ q: "x".repeat(101) }).fields.q, "Từ khóa tối đa 100 ký tự.");
+  assert.deepEqual(parseDishSearch({ q: "x".repeat(100) }).fields, {});
+  assert.equal(parseDishSearch({ q: ["a", "b"] }).search.q, "");
+  assert.equal(parseDishSearch({ q: "  phở " }).search.q, "phở");
+});
+
+test("parseDishSearch: category lạ bị bỏ qua, category hợp lệ được giữ ở mọi mode", () => {
+  assert.equal(parseDishSearch({ category: "xyz" }).search.category, "");
+  assert.equal(parseDishSearch({ category: "Khai vị" }).search.category, "Khai vị");
+  assert.equal(parseDishSearch({ mode: "fuzzy", category: "Khai vị" }).search.category, "Khai vị");
+});
+
+test("parseDishSearch: mode khác advanced bỏ qua (không kiểm tra) tham số nâng cao", () => {
+  for (const mode of ["basic", "fulltext", "fuzzy"]) {
+    const r = parseDishSearch({ mode, q: "phở", minPrice: "abc", maxPrice: "-1", available: "yes", ingredient: "tỏi" });
+    assert.deepEqual(r.fields, {}, mode);
+    assert.deepEqual(r.search, { ...NO_SEARCH, mode, q: "phở" }, mode);
+  }
+});
+
+test("parseDishSearch advanced: ingredient được cắt khoảng trắng", () => {
+  assert.equal(parseDishSearch({ mode: "advanced", ingredient: "  Tỏi " }).search.ingredient, "Tỏi");
 });

@@ -19,6 +19,67 @@ function parseDishSort(raw) {
   return typeof raw === "string" && Object.hasOwn(DISH_SORTS, raw) ? raw : "default";
 }
 
+// Các kiểu tìm kiếm món cho ?mode=... (quy tắc so khớp: xem api/src/db/dish-search.js)
+const SEARCH_MODES = {
+  basic: "Cơ bản",
+  advanced: "Nâng cao",
+  fulltext: "Toàn văn",
+  fuzzy: "Gần đúng",
+};
+const MAX_QUERY_LENGTH = 100;
+
+/*
+ * Đọc tiêu chí tìm kiếm món từ req.query -> { fields, search }.
+ *  - Thiếu / chuỗi trắng = không có tiêu chí; available=false và minPrice=0 là tiêu chí thật.
+ *  - minPrice, maxPrice, available, ingredient chỉ dùng (và chỉ kiểm tra) ở mode advanced;
+ *    mode khác bỏ qua chúng, nên đổi mode trên giao diện không sinh lỗi từ tham số còn sót.
+ *  - category lạ bị bỏ qua như Block 6 (danh mục là bộ lọc duyệt thực đơn, dùng ở mọi mode).
+ */
+function parseDishSearch(query) {
+  const raw = asObject(query);
+  const fields = {};
+  const search = { mode: "basic", q: "", category: "", minPrice: null, maxPrice: null, available: null, ingredient: "" };
+
+  const mode = str(raw.mode);
+  if (mode) {
+    if (Object.hasOwn(SEARCH_MODES, mode)) search.mode = mode;
+    else fields.mode = "Kiểu tìm kiếm không hợp lệ.";
+  }
+
+  search.q = str(raw.q);
+  if (search.q.length > MAX_QUERY_LENGTH) fields.q = `Từ khóa tối đa ${MAX_QUERY_LENGTH} ký tự.`;
+
+  if (DISH_CATEGORIES.includes(raw.category)) search.category = raw.category;
+
+  if (search.mode !== "advanced") return { fields, search };
+
+  // Giá: số nguyên không âm viết bằng chữ số; mảng (?minPrice=1&minPrice=2) là sai định dạng
+  const price = (key, message) => {
+    const v = raw[key];
+    if (v === undefined || (typeof v === "string" && !v.trim())) return null;
+    const text = typeof v === "string" ? v.trim() : "";
+    if (!/^\d+$/.test(text) || Number(text) > MAX_PRICE) {
+      fields[key] = message;
+      return null;
+    }
+    return Number(text);
+  };
+  search.minPrice = price("minPrice", "Giá từ phải là số nguyên không âm.");
+  search.maxPrice = price("maxPrice", "Giá đến phải là số nguyên không âm.");
+  if (search.minPrice !== null && search.maxPrice !== null && search.minPrice > search.maxPrice) {
+    fields.maxPrice = "Giá đến phải lớn hơn hoặc bằng giá từ.";
+  }
+
+  const available = str(raw.available);
+  if (available === "true" || available === "false") search.available = available === "true";
+  else if (available || (raw.available !== undefined && typeof raw.available !== "string")) {
+    fields.available = "Tình trạng chỉ nhận true hoặc false.";
+  }
+
+  search.ingredient = str(raw.ingredient);
+  return { fields, search };
+}
+
 // Khung giờ nhận khách: 10:00 – 21:00, mỗi 30 phút (nhà hàng đóng cửa 22:00)
 const BOOKING_SLOTS = [];
 for (let m = 10 * 60; m <= 21 * 60; m += 30) {
@@ -291,6 +352,8 @@ module.exports = {
   DISH_CATEGORIES,
   DISH_SORTS,
   parseDishSort,
+  SEARCH_MODES,
+  parseDishSearch,
   INGREDIENT_UNITS,
   BOOKING_SLOTS,
   BOOKING_MAX_GUESTS,

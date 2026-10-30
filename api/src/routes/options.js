@@ -4,6 +4,7 @@ const { todayInVietnam } = require("../utils/helpers");
 const {
   DISH_CATEGORIES,
   DISH_SORTS,
+  SEARCH_MODES,
   INGREDIENT_UNITS,
   BOOKING_SLOTS,
   BOOKING_MAX_GUESTS,
@@ -20,6 +21,7 @@ router.get("/", (req, res) => {
   ok(res, {
     categories: DISH_CATEGORIES,
     sorts: Object.entries(DISH_SORTS).map(([key, { label }]) => ({ key, label })),
+    searchModes: Object.entries(SEARCH_MODES).map(([key, label]) => ({ key, label })),
     units: INGREDIENT_UNITS,
     booking: {
       slots: BOOKING_SLOTS,

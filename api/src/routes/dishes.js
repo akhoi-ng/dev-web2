@@ -2,7 +2,7 @@ const express = require("express");
 const prisma = require("../db/prisma");
 const { ok, notFound, validationFailed } = require("../http/respond");
 const { asyncHandler, parseId, paginate, pageParams, isEmpty, isNotFoundError, escapeLike } = require("../utils/helpers");
-const { validateDish, DISH_CATEGORIES, DISH_SORTS, parseDishSort } = require("../utils/validators");
+const { validateDish, DISH_SORTS, parseDishSort, parseDishSearch } = require("../utils/validators");
 
 const router = express.Router();
 
@@ -32,13 +32,9 @@ async function loadRefs() {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    // ?q=a&q=b khiến req.query.q là mảng -> bỏ qua, coi như rỗng
-    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    // Chỉ nhận danh mục có trong danh sách; giá trị lạ coi như "Tất cả"
-    const category =
-      typeof req.query.category === "string" && DISH_CATEGORIES.includes(req.query.category)
-        ? req.query.category
-        : "";
+    const { fields, search } = parseDishSearch(req.query);
+    if (!isEmpty(fields)) return validationFailed(res, fields);
+    const { q, category } = search;
     const sort = parseDishSort(req.query.sort);
 
     const where = { name: { contains: escapeLike(q), mode: "insensitive" } };

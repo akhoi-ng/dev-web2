@@ -154,3 +154,26 @@ test("charset không hỗ trợ (415) → 415 { message }, không phải 500", a
     assert.equal("ok" in (await r.json()), false);
   });
 });
+
+test("GET /api/options có searchModes theo thứ tự basic, advanced, fulltext, fuzzy", async () => {
+  await withServer(async (base) => {
+    const j = await (await fetch(base + "/api/options")).json();
+    assert.deepEqual(j.data.searchModes, [
+      { key: "basic", label: "Cơ bản" },
+      { key: "advanced", label: "Nâng cao" },
+      { key: "fulltext", label: "Toàn văn" },
+      { key: "fuzzy", label: "Gần đúng" },
+    ]);
+  });
+});
+
+test("GET /api/dishes với tiêu chí sai -> 200 VALIDATION_FAILED, không chạm DB", async () => {
+  await withServer(async (base) => {
+    const r = await fetch(base + "/api/dishes?mode=advanced&minPrice=abc&available=yes");
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.ok, false);
+    assert.equal(j.error.code, "VALIDATION_FAILED");
+    assert.deepEqual(Object.keys(j.error.fields).sort(), ["available", "minPrice"]);
+  });
+});
