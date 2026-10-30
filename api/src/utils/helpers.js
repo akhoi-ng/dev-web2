@@ -44,6 +44,12 @@ function str(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+// Prisma `contains` không escape ký tự đại diện của LIKE: thêm "\" trước \ % _ để chúng
+// được so khớp như ký tự thường (PostgreSQL dùng "\" làm ký tự escape mặc định của LIKE).
+function escapeLike(text) {
+  return text.replace(/[\\%_]/g, "\\$&");
+}
+
 // Body JSON hợp lệ phải là object thường; mảng, chuỗi, null... coi như body rỗng.
 function asObject(body) {
   return body !== null && typeof body === "object" && !Array.isArray(body) ? body : {};
@@ -76,6 +82,7 @@ module.exports = {
   paginate,
   pageParams,
   str,
+  escapeLike,
   asObject,
   isEmpty,
   isHttpUrl,

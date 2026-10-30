@@ -41,3 +41,29 @@ Phản hồi (rút gọn):
 {"ok":true,"meta":{"page":1,"totalPages":51,"total":51,"pageSize":1},"firstItem":{"id":214,"name":"Salad Caesar"}}
 {"ok":true,"meta":{"page":1,"totalPages":51,"total":51,"pageSize":1},"firstItem":{"id":214,"name":"Salad Caesar"}}
 ```
+
+## Sửa
+
+`escapeLike(text)` trong `api/src/utils/helpers.js` thêm dấu gạch ngược trước gạch ngược, `%`
+và `_`, rồi `GET /api/dishes` truyền `contains: escapeLike(q)`. PostgreSQL dùng gạch ngược làm
+ký tự escape mặc định của `LIKE`/`ILIKE`, nên `%` và `_` được so khớp như ký tự thường. Unit test
+`escapeLike` ở `api/test/helpers.test.js` giữ hành vi này.
+
+## Sau khi sửa
+
+`npm run acceptance`:
+
+```text
+PASS dishes: tổng số món
+PASS dishes: q=% là ký tự thường
+PASS dishes: q=_ là ký tự thường
+...
+Tất cả dòng đều PASS
+```
+
+Phản hồi:
+
+```json
+{"ok":true,"data":[],"meta":{"page":1,"totalPages":1,"total":0,"pageSize":1}}
+{"ok":true,"data":[],"meta":{"page":1,"totalPages":1,"total":0,"pageSize":1}}
+```

@@ -1,7 +1,7 @@
 const express = require("express");
 const prisma = require("../db/prisma");
 const { ok, notFound, validationFailed } = require("../http/respond");
-const { asyncHandler, parseId, paginate, pageParams, isEmpty, isNotFoundError } = require("../utils/helpers");
+const { asyncHandler, parseId, paginate, pageParams, isEmpty, isNotFoundError, escapeLike } = require("../utils/helpers");
 const { validateDish, DISH_CATEGORIES, DISH_SORTS, parseDishSort } = require("../utils/validators");
 
 const router = express.Router();
@@ -41,7 +41,7 @@ router.get(
         : "";
     const sort = parseDishSort(req.query.sort);
 
-    const where = { name: { contains: q, mode: "insensitive" } };
+    const where = { name: { contains: escapeLike(q), mode: "insensitive" } };
     if (category) where.category = category;
 
     const query = {

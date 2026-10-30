@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const helpers = require("../src/utils/helpers");
-const { asObject, pageParams, isEmpty, paginate, parseId } = helpers;
+const { asObject, pageParams, isEmpty, paginate, parseId, escapeLike } = helpers;
 
 test("asObject giữ nguyên object thường, còn lại thành {}", () => {
   const body = { a: 1 };
@@ -51,4 +51,11 @@ test("parseId: id vượt giới hạn INT4 của PostgreSQL → null (NOT_FOUND
   assert.equal(parseId("2147483647"), 2147483647);
   assert.equal(parseId("2147483648"), null);
   assert.equal(parseId("99999999999"), null);
+});
+
+test("escapeLike: % _ \\ người dùng gõ thành ký tự thường trong mẫu LIKE", () => {
+  assert.equal(escapeLike("100%"), "100\\%");
+  assert.equal(escapeLike("SQL_"), "SQL\\_");
+  assert.equal(escapeLike("a\\b"), "a\\\\b");
+  assert.equal(escapeLike("phở"), "phở");
 });
