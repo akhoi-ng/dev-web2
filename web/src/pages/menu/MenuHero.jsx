@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import SearchForm from "../../components/SearchForm.jsx";
 import DishImage from "../../components/DishImage.jsx";
 import { formatPrice } from "../../lib/format.js";
 import { RESTAURANT } from "../../lib/restaurant.js";
 import InlineError from "./InlineError.jsx";
+
+// Khi chưa tải được danh sách kiểu tìm kiếm từ API, vẫn tìm được theo kiểu cơ bản
+const FALLBACK_MODES = [{ key: "basic", label: "Cơ bản" }];
 
 function Stat({ label, value }) {
   return (
@@ -13,20 +16,8 @@ function Stat({ label, value }) {
   );
 }
 
-// q: từ khoá đang áp dụng (từ URL); onSearch(value) được gọi khi gửi form tìm kiếm
-export default function MenuHero({ q, onSearch, stats }) {
-  const [input, setInput] = useState(q);
-
-  // URL là nguồn sự thật: khi q trên URL đổi (Xóa bộ lọc, Back/Forward) thì ô nhập theo
-  useEffect(() => {
-    setInput(q);
-  }, [q]);
-
-  const submit = (e) => {
-    e.preventDefault();
-    onSearch(input.trim());
-  };
-
+// criteria: tiêu chí đang áp dụng (từ URL); onSearch(next) được gọi khi gửi form tìm kiếm
+export default function MenuHero({ criteria, modes, onSearch, stats }) {
   const data = stats.status === "ok" ? stats.data : null;
   const heroImages = data ? data.tiles.filter((t) => t.imageUrl).slice(0, 3) : [];
 
@@ -37,19 +28,9 @@ export default function MenuHero({ q, onSearch, stats }) {
         <h1 className="text-[2.5rem] font-extrabold leading-[1.05] tracking-tight sm:text-5xl">Bữa ngon ấm áp,<br />gọi món thật dễ.</h1>
         <p className="max-w-lg text-lg leading-relaxed text-stone-600">Xem giá, thành phần và tình trạng từng món ngay trên điện thoại. Chọn xong rồi đến, khỏi phải chờ đợi.</p>
 
-        <form onSubmit={submit} role="search" className="flex max-w-xl gap-2 rounded-2xl border border-[#EADBD2] bg-white p-1.5">
-          <label htmlFor="q" className="sr-only">Tìm món ăn</label>
-          <input
-            id="q"
-            type="search"
-            name="q"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Tìm món: phở, bún chả, tiramisu…"
-            className="min-w-0 flex-1 rounded-xl border-0 bg-transparent px-3.5 py-3 text-base placeholder-stone-400 focus:ring-0"
-          />
-          <button type="submit" className="min-h-12 rounded-xl bg-brand-600 px-6 font-bold text-white hover:bg-brand-700">Tìm</button>
-        </form>
+        <div className="max-w-2xl">
+          <SearchForm criteria={criteria} modes={modes || FALLBACK_MODES} onSubmit={onSearch} idPrefix="menu-search" />
+        </div>
 
         {data && (
           <dl className="flex flex-wrap gap-x-8 gap-y-3 pt-1">
