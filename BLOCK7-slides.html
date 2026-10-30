@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lửa Hồng — Tìm kiếm và phân trang (Block 7)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --brand-50: #FDF3EF; --brand-100: #FBE7DF; --brand-200: #F6CDBF; --brand-300: #EDA48E;
+    --brand-500: #CC4A2F; --brand-600: #B8321C; --brand-700: #9A2816; --brand-800: #7A2013;
+    --saffron: #F4B13E; --cream: #FFF8F2; --ink: #2B1B17; --line: #EADBD2;
+    --muted: #6B5A54; --soft: #8C7B75; --ok: #1E5233; --ok-bg: #E3EFE7; --bad: #9A2816; --bad-bg: #FBE7DF;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #1d1310; overflow: hidden; }
+  body { font-family: "Be Vietnam Pro", system-ui, "Segoe UI", sans-serif; color: var(--ink); }
+
+  /* Khung 1280×720, co giãn vừa màn hình */
+  .stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  .deck { width: 1280px; height: 720px; position: relative; transform-origin: center center; }
+  .slide {
+    position: absolute; inset: 0; background: var(--cream); padding: 56px 72px 60px;
+    display: none; flex-direction: column; overflow: hidden; border-radius: 6px;
+  }
+  .slide.active { display: flex; }
+  .slide::after { /* dải màu thương hiệu dưới chân slide */
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px;
+    background: linear-gradient(90deg, var(--brand-600), var(--saffron));
+  }
+  .foot {
+    position: absolute; left: 72px; right: 72px; bottom: 20px; display: flex; justify-content: space-between;
+    font-size: 13px; color: var(--soft); font-weight: 500;
+  }
+
+  /* Chữ */
+  .kicker { font-size: 15px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--brand-600); margin-bottom: 10px; }
+  h1 { font-size: 64px; line-height: 1.05; font-weight: 800; letter-spacing: -.02em; }
+  h2 { font-size: 40px; line-height: 1.15; font-weight: 800; letter-spacing: -.015em; margin-bottom: 22px; }
+  h3 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  p, li { font-size: 19px; line-height: 1.5; }
+  .lead { font-size: 22px; color: var(--muted); line-height: 1.5; }
+  .muted { color: var(--muted); }
+  .small { font-size: 15px; }
+  ul.clean { list-style: none; display: grid; gap: 10px; }
+  ul.clean li { padding-left: 26px; position: relative; }
+  ul.clean li::before { content: ""; position: absolute; left: 4px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background: var(--brand-500); }
+  code, .mono { font-family: var(--mono); font-size: .88em; font-variant-ligatures: none; }
+  :not(pre) > code { background: var(--brand-100); color: var(--brand-800); padding: 1px 6px; border-radius: 5px; }
+  strong { font-weight: 700; }
+  .hl { background: linear-gradient(transparent 60%, rgba(244,177,62,.55) 60%); }
+
+  /* Khối */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; }
+  .card.tint { background: var(--brand-50); border-color: var(--brand-200); }
+  .card.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .grow { flex: 1; min-height: 0; }
+  .row { display: flex; gap: 24px; align-items: stretch; }
+
+  /* Ô số liệu */
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 18px 22px; }
+  .stat .v { font-size: 46px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+  .stat .l { font-size: 15px; color: var(--muted); margin-top: 4px; }
+
+  /* Bảng */
+  table { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 16px; font-size: 16.5px; line-height: 1.4; vertical-align: top; border-bottom: 1px solid #F3E8E1; }
+  th { background: var(--brand-50); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--brand-800); font-weight: 700; }
+  tr:last-child td { border-bottom: 0; }
+  td.k { font-weight: 700; white-space: nowrap; }
+
+  /* Nhãn */
+  .tag { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+  .tag.srv { background: var(--ink); color: #fff; }
+  .tag.ajax { background: var(--saffron); color: var(--ink); }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.bad { background: var(--bad-bg); color: var(--bad); }
+
+  /* Code */
+  pre { font-variant-ligatures: none; font-family: var(--mono); font-size: 15px; line-height: 1.55; background: var(--ink); color: #F7EDE7; border-radius: 14px; padding: 16px 20px; overflow: hidden; white-space: pre; }
+  pre .c { color: #B9A59C; }
+  pre .k { color: var(--saffron); }
+  pre .s { color: #F6CDBF; }
+  pre .fail { color: #FF9C85; font-weight: 600; }
+  pre .pass { color: #9BE3B2; font-weight: 600; }
+
+  /* Sơ đồ luồng */
+  .flow { display: flex; align-items: stretch; gap: 0; }
+  .flow .step { flex: 1; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px; font-size: 15px; line-height: 1.4; }
+  .flow .step b { display: block; font-size: 16px; margin-bottom: 4px; }
+  .flow .arrow { width: 34px; display: grid; place-items: center; color: var(--brand-500); font-size: 26px; font-weight: 800; flex: none; }
+  .flow .step.hot { background: var(--brand-600); color: #fff; border-color: var(--brand-600); }
+  .flow .step.end { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  /* Mô phỏng 3 kiểu phân trang */
+  .mock { background: var(--cream); border: 1px dashed var(--brand-300); border-radius: 12px; padding: 10px; margin: 10px 0 12px; height: 150px; position: relative; overflow: hidden; }
+  .mock .g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .mock .g i { display: block; height: 26px; border-radius: 6px; background: var(--brand-200); }
+  .mock .g i.new { background: var(--saffron); }
+  .mock .pg { display: flex; gap: 5px; justify-content: center; margin-top: 10px; }
+  .mock .pg span { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line); background: #fff; font-size: 11px; display: grid; place-items: center; font-weight: 700; }
+  .mock .pg span.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .mock .btn { margin: 8px auto 0; width: 160px; white-space: nowrap; text-align: center; font-size: 12px; font-weight: 700; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 4px; }
+  .mock .sentinel { margin-top: 8px; border-top: 2px dashed var(--brand-500); font-size: 11px; color: var(--brand-700); font-weight: 700; padding-top: 3px; text-align: center; }
+
+  /* Thanh so sánh dung lượng */
+  .bars { display: grid; gap: 14px; }
+  .bar { display: grid; grid-template-columns: 290px 1fr 150px; align-items: center; gap: 14px; }
+  .bar .name { font-size: 15.5px; font-weight: 600; }
+  .bar .name small { display: block; font-family: var(--mono); font-size: 12.5px; color: var(--muted); font-weight: 400; }
+  .bar .track { height: 30px; position: relative; }
+  .bar .fill { height: 100%; border-radius: 0 4px 4px 0; background: var(--brand-600); min-width: 3px; }
+  .bar .fill.big { background: var(--ink); }
+  .bar .val { font-size: 17px; font-weight: 800; text-align: right; }
+
+  /* Trigram */
+  .tri { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tri span { font-family: var(--mono); font-size: 18px; padding: 6px 12px; border-radius: 8px; background: #fff; border: 1px solid var(--line); white-space: pre; }
+  .tri span.same { background: var(--ok-bg); border-color: #b9d8c4; color: var(--ok); font-weight: 600; }
+  .tri span.diff { background: var(--bad-bg); border-color: var(--brand-200); color: var(--bad); }
+
+  /* Trang bìa */
+  .cover { background: radial-gradient(1200px 600px at 85% 15%, #FBE7DF 0%, var(--cream) 55%); }
+  .cover .badge { align-self: flex-start; background: var(--brand-100); color: var(--brand-800); padding: 7px 14px; border-radius: 999px; font-weight: 700; font-size: 15px; margin-bottom: 26px; }
+  .team { display: grid; grid-template-columns: repeat(4, auto); gap: 8px 28px; margin-top: auto; }
+  .team div { font-size: 16px; }
+  .team div span { display: block; color: var(--soft); font-size: 13px; }
+  .flame { position: absolute; right: 70px; top: 120px; width: 300px; height: 300px; border-radius: 50%; background: conic-gradient(from 200deg, var(--brand-600), var(--saffron), var(--brand-500), var(--brand-600)); opacity: .9; filter: blur(.3px); }
+  .flame::after { content: "1.500"; position: absolute; inset: 40px; border-radius: 50%; background: var(--cream); display: grid; place-items: center; font-size: 64px; font-weight: 800; color: var(--brand-700); }
+  .flame-cap { position: absolute; right: 70px; top: 440px; width: 300px; text-align: center; color: var(--muted); font-weight: 600; }
+
+  /* Ghi chú người trình bày */
+  .notes { display: none; }
+  #notesPanel {
+    position: fixed; left: 0; right: 0; bottom: 0; max-height: 32vh; overflow: auto; background: rgba(29,19,16,.96); color: #F7EDE7;
+    font-size: 17px; line-height: 1.55; padding: 14px 28px 18px; display: none; z-index: 10; border-top: 3px solid var(--saffron);
+  }
+  #notesPanel b { color: var(--saffron); }
+  body.show-notes #notesPanel { display: block; }
+
+  /* Điều khiển */
+  .hud { position: fixed; right: 16px; top: 12px; display: flex; gap: 8px; align-items: center; z-index: 11; opacity: .35; transition: opacity .2s; }
+  .hud:hover { opacity: 1; }
+  .hud button { background: #fff; border: 0; border-radius: 8px; padding: 6px 11px; font: 600 14px "Be Vietnam Pro", sans-serif; cursor: pointer; }
+  .hud span { color: var(--ink); font: 600 14px "Be Vietnam Pro", sans-serif; min-width: 56px; text-align: center; }
+  .progress { position: fixed; left: 0; top: 0; height: 4px; background: var(--saffron); z-index: 11; transition: width .25s; }
+
+  @media print {
+    html, body { background: #fff; overflow: visible; height: auto; }
+    .stage { position: static; display: block; }
+    .deck { transform: none !important; width: 1280px; height: auto; }
+    .slide { display: flex !important; position: relative; width: 1280px; height: 720px; page-break-after: always; break-after: page; border-radius: 0; }
+    .hud, .progress, #notesPanel { display: none !important; }
+    @page { size: 1280px 720px; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="stage"><div class="deck" id="deck">
+
+<!-- 1. Bìa -->
+<section class="slide cover">
+  <span class="badge">Phát triển ứng dụng web · Block 7</span>
+  <h1>Tìm kiếm và phân trang<br><span style="color:var(--brand-600)">trên 1.500 món ăn</span></h1>
+  <p class="lead" style="margin-top:18px;max-width:640px">Ứng dụng nhà hàng <strong>Lửa Hồng</strong> — REST API (Express + Prisma + PostgreSQL/Supabase) và SPA (React).</p>
+  <div class="flame"></div>
+  <div class="flame-cap">món trong thực đơn sau khi seed</div>
+  <div class="team">
+    <div>Nguyễn Tấn Hiệu<span>24127373</span></div>
+    <div>La Anh Hào<span>24127361</span></div>
+    <div>Trần Nguyễn Tuấn Minh<span>24127084</span></div>
+    <div>Nguyễn Anh Khôi<span>24127430</span></div>
+  </div>
+  <div class="notes">Giới thiệu nhóm và đề tài. Block 7 mở rộng app Block 6 để chạy trên thực đơn 1.500 món: ba kiểu phân trang, bốn kiểu tìm kiếm tại server.</div>
+</section>
+
+<!-- 2. Câu hỏi xuyên suốt -->
+<section class="slide">
+  <div class="kicker">Câu hỏi xuyên suốt</div>
+  <h2 style="font-size:36px;max-width:1060px">Khi danh sách chỉ hiện <span class="hl">một phần</span> dữ liệu, thao tác nào tác động tới phần đang có, thao tác nào tác động tới <span class="hl">toàn bộ tập kết quả</span>?</h2>
+  <div class="grid4" style="margin-top:18px">
+    <div class="stat"><div class="v">1.500</div><div class="l">món ăn trong Supabase (seed cố định)</div></div>
+    <div class="stat"><div class="v">3</div><div class="l">kiểu phân trang ở thực đơn khách</div></div>
+    <div class="stat"><div class="v">4</div><div class="l">kiểu tìm kiếm tại server, ở cả trang khách và trang quản lý</div></div>
+    <div class="stat"><div class="v">2</div><div class="l">lỗi phát hiện, có bằng chứng trước/sau khi sửa</div></div>
+  </div>
+  <div class="card tint" style="margin-top:22px">
+    <p><strong>Câu trả lời của nhóm:</strong> tìm kiếm, lọc, sắp xếp đều tác động tới <strong>toàn bộ tập kết quả</strong> nên chạy ở <strong>server</strong>; browser chỉ nhận phần đang xem (9 món một lần). Ba kiểu hiển thị chỉ khác nhau ở cách <strong>ghép các trang</strong> trên giao diện.</p>
+  </div>
+  <div class="notes">Nêu câu hỏi của deck rồi trả lời ngay quyết định chính: mọi thao tác ảnh hưởng toàn bộ kết quả đều đặt ở server.</div>
+</section>
+
+<!-- 3. Kiến trúc -->
+<section class="slide">
+  <div class="kicker">Tổng quan</div>
+  <h2>Một request tìm kiếm đi qua những đâu</h2>
+  <div class="flow">
+    <div class="step"><b>URL là nguồn sự thật</b><code>/dishes?view=more&amp;mode=fuzzy&amp;q=bun</code></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>SPA (React)</b><code>readCriteria</code> → <code>apiQuery</code><br><code>useApiData</code> / <code>useLoadMore</code></div>
+    <div class="arrow">→</div>
+    <div class="step hot"><b>GET /api/dishes</b><code style="background:rgba(255,255,255,.18);color:#fff">parseDishSearch</code><br>validate, chuẩn hóa</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Chọn cách truy vấn</b>basic/advanced: Prisma <code>where</code><br>fulltext/fuzzy: SQL có tham số</div>
+    <div class="arrow">→</div>
+    <div class="step end"><b>PostgreSQL</b>WHERE → COUNT → ORDER BY … , id → LIMIT/OFFSET</div>
+  </div>
+  <div class="grid3" style="margin-top:26px">
+    <div class="card"><h3>Phản hồi thống nhất</h3><p class="small"><code>{ ok, data, meta: { page, totalPages, total, pageSize, mode } }</code>. Tiêu chí sai → HTTP 200, <code>ok:false</code>, <code>VALIDATION_FAILED</code>.</p></div>
+    <div class="card"><h3>Không trộn kết quả</h3><p class="small">Mỗi lần tìm có một <strong>khóa</strong>. Đổi điều kiện → huỷ request cũ (<code>AbortController</code>), bỏ phản hồi mang khóa cũ.</p></div>
+    <div class="card"><h3>An toàn SQL</h3><p class="small">Không nối chuỗi người dùng vào SQL: mọi giá trị là tham số <code>$1, $2…</code>; <code>%</code> và <code>_</code> được escape.</p></div>
+  </div>
+  <div class="notes">Đi theo mũi tên: URL giữ toàn bộ tiêu chí → SPA đổi thành query → API validate → chọn Prisma hay SQL → PostgreSQL lọc, đếm, sắp, cắt trang theo đúng thứ tự.</div>
+</section>
+
+<!-- 4. Câu 1: paging -->
+<section class="slide">
+  <div class="kicker">Câu 1 · Chức năng nào dùng paging, search?</div>
+  <h2>Phân trang ở server, giao diện cập nhật bằng AJAX</h2>
+  <table>
+    <tr><th>Chức năng</th><th>Phân trang</th><th>Cập nhật giao diện</th><th>Search</th><th>Lý do</th></tr>
+    <tr><td class="k">Thực đơn <code>/dishes</code> — Số trang</td><td><span class="tag srv">Server</span> 9 món</td><td><span class="tag ajax">AJAX</span> thay lưới</td><td style="white-space:nowrap">4 mode</td><td>Mỗi trang là một URL <code>?page=n</code>, mở lại đúng trang</td></tr>
+    <tr><td class="k">Thực đơn — Tải thêm</td><td><span class="tag srv">Server</span> 9 món</td><td><span class="tag ajax">AJAX</span> nối thêm</td><td style="white-space:nowrap">4 mode</td><td>Khách lướt liên tục, chỉ tải phần tiếp theo</td></tr>
+    <tr><td class="k">Thực đơn — Cuộn vô hạn</td><td><span class="tag srv">Server</span> 9 món</td><td><span class="tag ajax">AJAX</span> tự nối</td><td style="white-space:nowrap">4 mode</td><td>Như Tải thêm, không cần bấm</td></tr>
+    <tr><td class="k">Quản lý món <code>/admin/dishes</code></td><td><span class="tag srv">Server</span> 10 dòng</td><td><span class="tag ajax">AJAX</span></td><td style="white-space:nowrap">4 mode</td><td>Nhân viên nhảy tới trang bất kỳ, mở lại đúng trang để sửa</td></tr>
+    <tr><td class="k">Quản lý đầu bếp, nguyên liệu</td><td><span class="tag srv">Server</span> 10 dòng</td><td><span class="tag ajax">AJAX</span></td><td>—</td><td>Giữ như Block 6</td></tr>
+  </table>
+  <p class="muted small" style="margin-top:16px"><strong>Không dùng client paging:</strong> tải toàn bộ 1.500 món ≈ 1 MB JSON cho mỗi lần mở trang, trong khi khách thường chỉ xem vài chục món đầu.</p>
+  <div class="notes">Trả lời câu 1 slide 41. Nhấn mạnh: không có chức năng nào phân trang ở client; "AJAX" = SPA gọi fetch rồi React vẽ lại, không tải trang HTML mới.</div>
+</section>
+
+<!-- 5. Ba kiểu hiển thị -->
+<section class="slide">
+  <div class="kicker">Câu 1 · Ba UI dùng cùng một API phân trang</div>
+  <h2>Số trang · Tải thêm · Cuộn vô hạn</h2>
+  <div class="grid3">
+    <div class="card">
+      <h3>Số trang <span class="mono small muted">?view=pages</span></h3>
+      <div class="mock"><div class="g"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="pg"><span>‹</span><span>1</span><span class="on">2</span><span>3</span><span>…</span><span>167</span><span>›</span></div></div>
+      <p class="small">Chọn trang để <strong>thay</strong> danh sách. Reload / copy link mở lại <strong>đúng trang</strong>.</p>
+    </div>
+    <div class="card">
+      <h3>Tải thêm <span class="mono small muted">?view=more</span></h3>
+      <div class="mock"><div class="g"><i></i><i></i><i></i><i></i><i></i><i></i><i class="new"></i><i class="new"></i><i class="new"></i></div><div class="btn">Tải thêm (18/1500)</div></div>
+      <p class="small">Bấm để <strong>nối</strong> 9 món tiếp. Nút khóa khi đang tải; hết thì "Đã hiện hết N món".</p>
+    </div>
+    <div class="card">
+      <h3>Cuộn vô hạn <span class="mono small muted">?view=scroll</span></h3>
+      <div class="mock"><div class="g"><i></i><i></i><i></i><i></i><i></i><i></i><i class="new"></i><i class="new"></i><i class="new"></i></div><div class="sentinel">sentinel · rootMargin 200px</div></div>
+      <p class="small"><code>IntersectionObserver</code> theo dõi một <code>div</code> sau lưới; gần tới thì tự tải.</p>
+    </div>
+  </div>
+  <div class="row" style="margin-top:18px">
+    <ul class="clean grow small" style="font-size:16px">
+      <li style="font-size:16px">Trạng thái: <code>items, nextPage, pending, end, error</code>, gắn với <strong>khóa của lần tìm</strong>.</li>
+      <li style="font-size:16px">Chặn tải khi <code>pending</code> hoặc <code>end</code>; bỏ món trùng <code>id</code>.</li>
+      <li style="font-size:16px">Hết khi <code>page × pageSize ≥ total</code> hoặc trang trả về rỗng.</li>
+    </ul>
+  </div>
+  <div class="notes">Demo ngay nếu có thời gian: bấm nút chuyển kiểu ở đầu thực đơn. Nói rõ cả ba gọi cùng GET /api/dishes?page&amp;pageSize, chỉ khác cách ghép kết quả.</div>
+</section>
+
+<!-- 6. Bốn kiểu search -->
+<section class="slide">
+  <div class="kicker">Câu 1 · Search tại server</div>
+  <h2>Bốn mode — ở cả thực đơn và trang quản lý</h2>
+  <table>
+    <tr><th>Mode</th><th>Quy tắc so khớp cho <code style="background:none;color:inherit">q</code></th><th>Lọc thêm (AND)</th><th>Thứ tự</th><th>Ví dụ</th></tr>
+    <tr><td class="k">Cơ bản <span class="mono small muted">basic</span></td><td>Tên <strong>chứa</strong> chuỗi, không phân biệt hoa/thường (<code>ILIKE</code>)</td><td>Danh mục</td><td>Theo ô sắp xếp</td><td><code>phở</code> → mọi món tên có "phở"</td></tr>
+    <tr><td class="k">Nâng cao <span class="mono small muted">advanced</span></td><td>Như Cơ bản</td><td>Danh mục, giá từ/đến, tình trạng, <strong>nguyên liệu</strong></td><td>Theo ô sắp xếp</td><td>Tạm hết + ≤ 80.000đ + có "tỏi"</td></tr>
+    <tr><td class="k">Toàn văn <span class="mono small muted">fulltext</span></td><td>Tên + mô tả chứa <strong>mọi từ</strong> (full-text, cấu hình <code>simple</code>)</td><td>Danh mục</td><td><code>ts_rank</code> ↓, <code>id</code> ↑</td><td><code>phở bò</code></td></tr>
+    <tr><td class="k">Gần đúng <span class="mono small muted">fuzzy</span></td><td>Tên có đoạn <strong>gần giống</strong>, chịu gõ sai và <strong>không dấu</strong></td><td>Danh mục</td><td>Điểm ↓, <code>id</code> ↑</td><td><code>carbonra</code>, <code>bun</code></td></tr>
+  </table>
+  <div class="grid3" style="margin-top:18px">
+    <div class="card small"><p class="small"><strong>Rỗng ≠ false ≠ 0:</strong> ô trống = không lọc; <code>available=false</code> và <code>minPrice=0</code> là điều kiện thật.</p></div>
+    <div class="card small"><p class="small"><strong>Sai → VALIDATION_FAILED:</strong> giá <code>abc</code>, số âm, <code>min &gt; max</code>, <code>mode</code> lạ, từ khóa &gt; 100 ký tự.</p></div>
+    <div class="card small"><p class="small"><strong>Basic = Advanced</strong> khi chỉ có cùng <code>q</code> (acceptance kiểm tra).</p></div>
+  </div>
+  <div class="notes">Chọn "Nâng cao" mới hiện ô giá, tình trạng, nguyên liệu. Tham số nâng cao còn sót trên URL khi đổi sang mode khác thì bị bỏ qua, không báo lỗi.</div>
+</section>
+
+<!-- 7. Cấu hình PostgreSQL -->
+<section class="slide">
+  <div class="kicker">Cấu hình PostgreSQL</div>
+  <h2>Migration <code style="font-size:.8em">npm run db:search</code> và câu SQL thật</h2>
+  <div class="grid2 grow">
+    <div>
+<pre><span class="c">-- api/prisma/search.sql (chạy lại sau mỗi db:push)</span>
+<span class="k">CREATE EXTENSION IF NOT EXISTS</span> pg_trgm;
+<span class="k">CREATE EXTENSION IF NOT EXISTS</span> unaccent;
+
+<span class="c">-- index biểu thức: phải trùng y hệt câu truy vấn</span>
+<span class="k">CREATE INDEX IF NOT EXISTS</span> dishes_fts_idx
+  <span class="k">ON</span> dishes <span class="k">USING</span> GIN (to_tsvector(<span class="s">'simple'</span>,
+    name || <span class="s">' '</span> || coalesce(description, <span class="s">''</span>)));
+
+<span class="k">CREATE INDEX IF NOT EXISTS</span> dishes_name_trgm_idx
+  <span class="k">ON</span> dishes <span class="k">USING</span> GIN (name gin_trgm_ops);</pre>
+      <ul class="clean" style="margin-top:14px">
+        <li class="small" style="font-size:16px"><code>simple</code> cho cả document và query; <code>coalesce</code> vì mô tả có thể NULL.</li>
+        <li class="small" style="font-size:16px">Ngưỡng gần đúng <strong>0.3</strong> (<code>word_similarity</code>).</li>
+      </ul>
+    </div>
+    <div>
+<pre><span class="c">-- fulltext: /api/dishes?mode=fulltext&amp;q=phở bò</span>
+<span class="k">SELECT</span> id <span class="k">FROM</span> dishes
+<span class="k">WHERE</span> to_tsvector(<span class="s">'simple'</span>, name || <span class="s">' '</span> ||
+        coalesce(description, <span class="s">''</span>))
+      @@ plainto_tsquery(<span class="s">'simple'</span>, $1)
+<span class="k">ORDER BY</span> ts_rank(…) <span class="k">DESC</span>, id <span class="k">ASC</span>
+<span class="k">LIMIT</span> $3 <span class="k">OFFSET</span> $4
+
+<span class="c">-- fuzzy: /api/dishes?mode=fuzzy&amp;q=bun</span>
+<span class="k">SELECT</span> id <span class="k">FROM</span> dishes
+<span class="k">WHERE</span> word_similarity(unaccent($1),
+        unaccent(name)) >= $2   <span class="c">-- 0.3</span>
+<span class="k">ORDER BY</span> word_similarity(…) <span class="k">DESC</span>, id <span class="k">ASC</span>
+<span class="k">LIMIT</span> $4 <span class="k">OFFSET</span> $5</pre>
+      <p class="muted small" style="margin-top:12px">Câu đếm <code>total</code> dùng <strong>cùng đoạn WHERE</strong>. Log thật bằng <code>LOG_SQL=1</code>.</p>
+    </div>
+  </div>
+  <div class="notes">Đây là SQL thật ghi được từ terminal API khi bật LOG_SQL=1. Vì Prisma không mô tả được index biểu thức nên dùng file SQL riêng.</div>
+</section>
+
+<!-- 8. Câu 2: filter & sort -->
+<section class="slide">
+  <div class="kicker">Câu 2 · Filter và sort đặt ở đâu, áp dụng cho dữ liệu nào?</div>
+  <h2>Ở server, trên <span class="hl">toàn bộ</span> 1.500 món — rồi mới cắt trang</h2>
+  <div class="flow">
+    <div class="step"><b>1.500 món</b>toàn bộ bảng <code>dishes</code></div>
+    <div class="arrow">→</div>
+    <div class="step hot"><b>1. Chọn tập kết quả</b>tìm kiếm + danh mục + giá + tình trạng + nguyên liệu (<code style="background:rgba(255,255,255,.18);color:#fff">WHERE</code>)</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>2. Đếm total</b>cùng điều kiện với bước 1</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>3. Sắp xếp</b>tên / giá / mới nhất, hoặc độ liên quan; luôn thêm <code>id</code></div>
+    <div class="arrow">→</div>
+    <div class="step end"><b>4. Cắt trang</b><code style="background:rgba(255,255,255,.15);color:#fff">LIMIT 9 OFFSET …</code> → browser</div>
+  </div>
+  <div class="grid2" style="margin-top:24px">
+    <div class="card">
+      <h3><span class="tag bad">Sai</span> Sắp xếp ở client sau khi mới tải 9 món</h3>
+      <p class="small">"Giá thấp → cao" chỉ đúng <strong>trong 9 món đó</strong>; món rẻ nhất cả thực đơn có thể nằm ở trang 80 và không bao giờ hiện lên đầu.</p>
+    </div>
+    <div class="card">
+      <h3><span class="tag ok">Nhóm chọn</span> Sắp xếp ở server</h3>
+      <p class="small"><code>ORDER BY price ASC, id ASC</code> trên toàn bộ kết quả rồi mới <code>LIMIT</code>. <code>id</code> giúp thứ tự ổn định: không món nào lặp hay mất giữa hai trang.</p>
+    </div>
+  </div>
+  <div class="notes">Trả lời câu 2. Thứ tự bắt buộc: chọn tập → đếm cùng điều kiện → sắp → cắt trang. Ví dụ phản chứng của slide 19 trong deck: client chỉ sắp được phần đã nhận.</div>
+</section>
+
+<!-- 9. Câu 3: Network -->
+<section class="slide">
+  <div class="kicker">Câu 3 · Network cho thấy tải toàn bộ hay từng phần?</div>
+  <h2><span class="hl">Từng phần</span> — mỗi request chỉ một trang</h2>
+  <div class="bars" role="img" aria-label="So sánh dung lượng phản hồi: một trang 9 món 5.664 byte, một trang tìm toàn văn 6.306 byte, toàn bộ danh sách 1.000.345 byte">
+    <div class="bar"><div class="name">Một trang thực đơn<small>?page=1&amp;pageSize=9</small></div><div class="track"><div class="fill" style="width:0.57%" title="5.664 byte"></div></div><div class="val">5.664 B</div></div>
+    <div class="bar"><div class="name">Một trang tìm Toàn văn "phở"<small>?mode=fulltext&amp;q=phở&amp;page=1</small></div><div class="track"><div class="fill" style="width:0.63%" title="6.306 byte"></div></div><div class="val">6.306 B</div></div>
+    <div class="bar"><div class="name">(so sánh) toàn bộ danh sách<small>GET /api/dishes — SPA không gọi</small></div><div class="track"><div class="fill big" style="width:100%" title="1.000.345 byte"></div></div><div class="val">1.000.345 B</div></div>
+  </div>
+  <p class="muted small" style="margin:6px 0 18px 304px">Thanh cùng một thang đo tuyến tính: một trang ≈ <strong>1/177</strong> toàn bộ danh sách.</p>
+  <table>
+    <tr><th>Thao tác trên <code style="background:none;color:inherit">/dishes</code></th><th>Request thấy trong DevTools → Network (Fetch/XHR)</th></tr>
+    <tr><td>Mở trang</td><td><code>GET /api/dishes?page=1&amp;pageSize=9</code> → <code>data</code> 9 món, <code>meta.total = 1500</code></td></tr>
+    <tr><td>Bấm trang 2 / Tải thêm / cuộn</td><td>Một request <code>page=2</code> (rồi <code>3</code>, <code>4</code>…) — chỉ 9 món mỗi lần</td></tr>
+    <tr><td>Đổi điều kiện khi đang tải</td><td>Request cũ hiện <code>(canceled)</code>, request mới bắt đầu từ <code>page=1</code></td></tr>
+  </table>
+  <div class="notes">Mở DevTools → Network → lọc Fetch/XHR khi demo. meta.total cho biết tổng số món để tính số trang mà không cần tải chúng về.</div>
+</section>
+
+<!-- 10. Mở lại link -->
+<section class="slide">
+  <div class="kicker">Mở lại kết quả và thay đổi điều kiện (slide 39)</div>
+  <h2>URL giữ tiêu chí — nhóm công bố hành vi khi mở lại</h2>
+  <table>
+    <tr><th>Thao tác</th><th>Số trang</th><th>Tải thêm / Cuộn vô hạn</th></tr>
+    <tr><td class="k">Tìm lại, đổi lọc, đổi sắp xếp</td><td>Về trang 1 của kết quả mới</td><td>Danh sách mới, bắt đầu từ 9 món đầu</td></tr>
+    <tr><td class="k">Chuyển trang / tải tiếp</td><td>Giữ tiêu chí, chỉ đổi <code>page</code></td><td>Giữ tiêu chí, nối trang tiếp</td></tr>
+    <tr><td class="k">Xóa bộ lọc</td><td colspan="2">Về <code>/dishes</code>, trang 1</td></tr>
+    <tr><td class="k">Reload, copy link</td><td><span class="tag ok">Khôi phục đúng trang</span></td><td><span class="tag ajax">Tải lại từ đầu</span> — URL không lưu số trang đã tải</td></tr>
+    <tr><td class="k">Back / Forward</td><td>Khôi phục tiêu chí + trang, ô tìm kiếm cập nhật</td><td>Như Reload</td></tr>
+  </table>
+  <pre style="margin-top:18px">/dishes<span class="k">?view=</span>more<span class="k">&amp;mode=</span>advanced<span class="k">&amp;q=</span>phở<span class="k">&amp;available=</span>false<span class="k">&amp;maxPrice=</span>80000<span class="k">&amp;sort=</span>price-asc</pre>
+  <div class="notes">Deck yêu cầu công bố khi mở lại link sẽ tải từ đầu hay khôi phục. Nhóm chọn: Số trang khôi phục đúng trang; Tải thêm/Cuộn tải lại từ đầu vì không cần cache phía client.</div>
+</section>
+
+<!-- 11. Câu 4: lỗi 1 -->
+<section class="slide">
+  <div class="kicker">Câu 4 · Lỗi phát hiện #1</div>
+  <h2>Gõ <code>%</code> hoặc <code>_</code> trả về <span class="hl">toàn bộ thực đơn</span></h2>
+  <div class="grid2 grow">
+    <div>
+      <h3>Nguyên nhân</h3>
+      <p class="small" style="font-size:17px">Prisma <code>contains</code> sinh <code>name ILIKE '%' || q || '%'</code> nhưng <strong>không escape</strong> ký tự đại diện của <code>LIKE</code>: <code>q=%</code> → mẫu <code>%%%</code> khớp mọi tên. Đúng tình huống slide 25 cảnh báo.</p>
+      <h3 style="margin-top:16px">Tái hiện</h3>
+<pre>curl <span class="s">"/api/dishes?q=%25&amp;page=1&amp;pageSize=1"</span>
+<span class="c"># kỳ vọng total = 0 · thực tế total = 51 (cả seed cũ)</span></pre>
+      <h3 style="margin-top:16px">Sửa — <code>escapeLike()</code></h3>
+<pre>text.replace(<span class="s">/[\\%_]/g</span>, <span class="s">"\\$&amp;"</span>)   <span class="c">// 100% → 100\%</span></pre>
+    </div>
+    <div>
+      <h3>Trước khi sửa <span class="mono small muted">commit 407ae17</span></h3>
+<pre><span class="pass">PASS</span> dishes: tổng số món
+<span class="fail">FAIL</span> dishes: q=% là ký tự thường
+     — total = 51, bằng toàn bộ 51 món
+<span class="fail">FAIL</span> dishes: q=_ là ký tự thường
+     — total = 51, bằng toàn bộ 51 món</pre>
+      <h3 style="margin-top:16px">Sau khi sửa <span class="mono small muted">commit 83f981e</span></h3>
+<pre><span class="pass">PASS</span> dishes: q=% là ký tự thường
+<span class="pass">PASS</span> dishes: q=_ là ký tự thường
+{"ok":true,"data":[],"meta":{"total":0,…}}</pre>
+      <p class="small" style="margin-top:12px">Seed 1.500 món: <code>q=%</code> → đúng 2 món <em>Combo 100% bò Úc</em>, <em>Bánh 50% đường</em>; <code>q=_</code> → <em>Trà_sữa_nhà_làm</em>.</p>
+    </div>
+  </div>
+  <div class="notes">Điểm mấu chốt về bằng chứng: kiểm tra thất bại được commit TRƯỚC bản sửa (407ae17), nên "trước khi sửa" là thật, không dựng lại sau. Chi tiết trong evidence/bug-like-wildcard.md.</div>
+</section>
+
+<!-- 12. Lỗi 2 -->
+<section class="slide">
+  <div class="kicker">Câu 4 · Lỗi phát hiện #2 (khi bấm thử giao diện)</div>
+  <h2>Gần đúng: gõ <code>bún</code> ra 42 món, gõ <code>bun</code> ra <span class="hl">0 món</span></h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Nguyên nhân: <code>pg_trgm</code> coi <code>ú</code> khác <code>u</code></h3>
+      <p class="small" style="margin-bottom:10px">Chuỗi được cắt thành nhóm 3 ký tự (trigram):</p>
+      <p class="small mono" style="margin-bottom:6px">bun</p>
+      <div class="tri"><span class="same">"  b"</span><span class="diff">" bu"</span><span class="diff">"bun"</span><span class="diff">"un "</span></div>
+      <p class="small mono" style="margin:12px 0 6px">bún</p>
+      <div class="tri"><span class="same">"  b"</span><span class="diff">" bú"</span><span class="diff">"bún"</span><span class="diff">"ún "</span></div>
+      <p class="small" style="margin-top:12px">Chỉ chung <strong>1/4</strong> → điểm <strong>0.25 &lt; 0.3</strong> → không khớp.</p>
+    </div>
+    <div>
+      <h3>Sửa: bỏ dấu cả hai phía</h3>
+<pre><span class="k">CREATE EXTENSION IF NOT EXISTS</span> unaccent;
+
+word_similarity(unaccent($1), unaccent(name)) >= 0.3
+<span class="c">-- unaccent('Bún bò Huế') = 'Bun bo Hue'</span></pre>
+      <table style="margin-top:14px">
+        <tr><th>Từ khóa</th><th>Trước</th><th>Sau</th></tr>
+        <tr><td><code>bún</code></td><td>42 món</td><td>42 món</td></tr>
+        <tr><td><code>bun</code></td><td><span class="tag bad">0 món</span></td><td><span class="tag ok">42 món</span> Bún chả Hà Nội đứng đầu</td></tr>
+        <tr><td><code>bun bo hue</code></td><td><span class="tag bad">0 món</span></td><td><span class="tag ok">Bún bò Huế</span> đứng đầu</td></tr>
+      </table>
+      <p class="small muted" style="margin-top:10px">Acceptance thêm dòng <code>fuzzy q=bun (không dấu) = q=bún</code> → 75/75 PASS.</p>
+    </div>
+  </div>
+  <div class="notes">Lỗi này do chính nhóm phát hiện khi thử giao diện. Đo trực tiếp trên Supabase: điểm cao nhất của "bun" trước khi sửa là 0.25. Full-text vẫn giữ cấu hình simple (có dấu) đúng yêu cầu slide 38; muốn gõ không dấu thì dùng Gần đúng.</div>
+</section>
+
+<!-- 13. Dữ liệu seed -->
+<section class="slide">
+  <div class="kicker">Chuẩn bị dữ liệu (slide 33)</div>
+  <h2>Seed 1.500 món — chạy lại luôn ra cùng một thực đơn</h2>
+  <div class="grid4">
+    <div class="stat"><div class="v">1.500</div><div class="l">món (51 viết tay + 1.449 sinh tự động)</div></div>
+    <div class="stat"><div class="v">103</div><div class="l">nguyên liệu (45 cũ + 58 mới)</div></div>
+    <div class="stat"><div class="v">5.094</div><div class="l">dòng công thức món – nguyên liệu</div></div>
+    <div class="stat"><div class="v">213</div><div class="l">món "Tạm hết" để thử lọc <code>available=false</code></div></div>
+  </div>
+  <div class="grid2" style="margin-top:22px">
+    <div class="card">
+      <h3>Cách sinh (<code>api/prisma/catalog.js</code>)</h3>
+      <ul class="clean">
+        <li class="small" style="font-size:16.5px">47 mẫu món × biến thể × phong cách × khẩu phần<br><span class="muted">Phở → bò tái, gà, chay… → "đặc biệt" → "(phần lớn)"</span></li>
+        <li class="small" style="font-size:16.5px">Xáo bằng PRNG có seed cố định → số liệu và bằng chứng tái hiện được</li>
+        <li class="small" style="font-size:16.5px">Mô tả nêu nguyên liệu chính → tìm Toàn văn theo nguyên liệu có kết quả</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Ghi vào Supabase</h3>
+<pre style="font-size:14px">npm run db:search   <span class="c"># pg_trgm, unaccent, index</span>
+npm run db:seed     <span class="c"># ~20 giây, createMany</span>
+
+<span class="k">SELECT</span> count(*) <span class="k">FROM</span> dishes;  <span class="c">-- 1500</span></pre>
+      <p class="small muted" style="margin-top:10px">3 món có ký tự đặc biệt để thử escape: <em>Combo 100% bò Úc</em>, <em>Bánh 50% đường</em>, <em>Trà_sữa_nhà_làm</em>.</p>
+    </div>
+  </div>
+  <div class="notes">Seed xóa sạch dữ liệu cũ (kể cả đặt bàn) rồi ghi bằng createMany nên chỉ mất vài giây cho 1.500 món.</div>
+</section>
+
+<!-- 14. Kiểm thử -->
+<section class="slide">
+  <div class="kicker">Nghiệm thu (slide 40)</div>
+  <h2>Chứng minh bằng kết quả quan sát được</h2>
+  <div class="grid4">
+    <div class="stat"><div class="v">71<span style="font-size:24px;color:var(--soft)">/71</span></div><div class="l">unit test API</div></div>
+    <div class="stat"><div class="v">22<span style="font-size:24px;color:var(--soft)">/22</span></div><div class="l">unit test SPA (URL ⇄ tiêu chí, Tải thêm)</div></div>
+    <div class="stat"><div class="v">75<span style="font-size:24px;color:var(--soft)">/75</span></div><div class="l">dòng acceptance trên 1.500 món</div></div>
+    <div class="stat"><div class="v" style="color:var(--ok)">✓</div><div class="l">build SPA thành công</div></div>
+  </div>
+  <table style="margin-top:20px">
+    <tr><th>Thao tác (deck)</th><th>Kết quả cần chứng minh</th><th>Kiểm tra</th></tr>
+    <tr><td>Chọn trang, Tải thêm, cuộn tiếp</td><td>Không mất hoặc lặp món</td><td><code>fuzzy đi hết các trang = total, không trùng</code>; test khử trùng <code>id</code></td></tr>
+    <tr><td>Đổi filter hoặc sort</td><td>Đúng điều kiện, thứ tự, phạm vi</td><td><code>available=false chỉ món tạm hết</code>; <code>minPrice=0&amp;maxPrice=60000 trong khoảng</code></td></tr>
+    <tr><td>Chuyển trang sau khi search</td><td>Giữ điều kiện, không trộn</td><td>Test "bỏ phản hồi mang khóa cũ"; <code>page vượt → trang cuối</code></td></tr>
+    <tr><td>Xóa điều kiện, Reload, mở lại link</td><td>Khôi phục như thiết kế</td><td>Test <code>readCriteria</code> / <code>writeParams</code>; kịch bản thủ công README 13.4</td></tr>
+  </table>
+  <div class="notes">Unit test không cần database; acceptance gọi API thật trên Supabase sau khi seed. Kịch bản bấm thử giao diện nằm ở README mục 13.4.</div>
+</section>
+
+<!-- 15. Quyết định & đánh đổi -->
+<section class="slide">
+  <div class="kicker">Quyết định kỹ thuật</div>
+  <h2>Nhóm chọn gì, đánh đổi gì</h2>
+  <table>
+    <tr><th>Quyết định</th><th>Lý do</th><th>Đánh đổi</th></tr>
+    <tr><td class="k">Paging / filter / sort ở server</td><td>1 trang ≈ 5,7 KB thay vì ≈ 1 MB; đúng trên toàn bộ kết quả</td><td>Mỗi thao tác là một request</td></tr>
+    <tr><td class="k">Prisma cho basic/advanced, SQL tham số cho fulltext/fuzzy</td><td>Giữ code Block 6; Prisma không có full-text/trigram cho PostgreSQL</td><td>Hai cách truy vấn</td></tr>
+    <tr><td class="k"><code>word_similarity</code> thay vì <code>similarity</code></td><td>Tên món 3–6 từ: "carbonra" so "Mỳ Ý Carbonara" = <strong>0.67</strong> thay vì 0.41</td><td>Từ khóa ngắn khớp rộng hơn (vẫn xếp theo điểm)</td></tr>
+    <tr><td class="k">Offset (<code>LIMIT/OFFSET</code>)</td><td>Nhảy tới trang bất kỳ, có <code>?page=</code> trên URL</td><td>Dữ liệu đổi giữa hai lần tải có thể lệch; Tải thêm khử trùng theo <code>id</code></td></tr>
+    <tr><td class="k">Tải thêm / Cuộn mở lại từ đầu</td><td>Không cần cache phía client, không cần khôi phục vị trí cuộn</td><td>Reload mất phần đã tải — muốn mở đúng chỗ thì dùng Số trang</td></tr>
+    <tr><td class="k">Migration bằng file SQL</td><td><code>db push</code> không tạo được extension và index biểu thức</td><td>Phải chạy lại <code>db:search</code> sau <code>db:push</code></td></tr>
+  </table>
+  <div class="notes">Chọn 2–3 dòng để nói, không cần đọc hết bảng.</div>
+</section>
+
+<!-- 16. Giới hạn -->
+<section class="slide">
+  <div class="kicker">Giới hạn đã biết & hướng phát triển</div>
+  <h2>Những gì nhóm biết nhưng chưa làm</h2>
+  <div class="grid2">
+    <div class="card"><h3>Toàn văn chưa bỏ dấu</h3><p class="small" style="font-size:17px">Cấu hình <code>simple</code> theo yêu cầu: "pho" không khớp "phở" ở chế độ Toàn văn. Hướng đi: cấu hình text search có <code>unaccent</code> như đã làm cho Gần đúng.</p></div>
+    <div class="card"><h3>Fuzzy quét tuần tự</h3><p class="small" style="font-size:17px"><code>word_similarity(...) &gt;= 0.3</code> trong <code>WHERE</code> không dùng được index trigram. 1.500 món vẫn nhanh; bảng lớn hơn nên dùng toán tử <code>&lt;%</code> + index trên <code>unaccent(name)</code>.</p></div>
+    <div class="card"><h3>Offset với bảng rất lớn</h3><p class="small" style="font-size:17px"><code>OFFSET</code> vẫn đọc qua các dòng bị bỏ. Hướng đi: keyset pagination (con trỏ <code>id</code>) cho Tải thêm / Cuộn vô hạn.</p></div>
+    <div class="card"><h3>Trang không hợp lệ</h3><p class="small" style="font-size:17px">Giữ hành vi Block 6: <code>page=abc</code> → trang 1, trang vượt → trang cuối. Slide 9–10 gợi ý <code>items: []</code> / <code>VALIDATION_FAILED</code> — có thể đổi nếu cần.</p></div>
+  </div>
+  <div class="notes">Thể hiện nhóm hiểu giới hạn của lựa chọn hiện tại.</div>
+</section>
+
+<!-- 17. Kịch bản demo -->
+<section class="slide">
+  <div class="kicker">Demo</div>
+  <h2>Kịch bản demo (≈ 3 phút)</h2>
+  <div class="grid2">
+    <ol style="display:grid;gap:10px;padding-left:24px">
+      <li>Mở <code>/dishes</code>, DevTools → Network → Fetch/XHR: chỉ <code>page=1&amp;pageSize=9</code>, <code>total 1500</code>.</li>
+      <li>Bấm trang 2 → URL có <code>?page=2</code>; Reload vẫn trang 2.</li>
+      <li>Chuyển <strong>Tải thêm</strong>, bấm 2 lần → 27 món, request <code>page=2,3</code>.</li>
+      <li>Chuyển <strong>Cuộn vô hạn</strong>, cuộn xuống → tự tải; đổi danh mục giữa chừng → danh sách bắt đầu lại.</li>
+    </ol>
+    <ol start="5" style="display:grid;gap:10px;padding-left:24px">
+      <li><strong>Gần đúng</strong> <code>carbonra</code> → Mỳ Ý Carbonara; <code>bun</code> → các món Bún.</li>
+      <li><strong>Nâng cao</strong>: Tạm hết + Giá đến 80000 + nguyên liệu "tỏi".</li>
+      <li><strong>Cơ bản</strong> gõ <code>%</code> → đúng 2 món (lỗi #1 đã sửa).</li>
+      <li><code>/admin/dishes</code>: tìm Toàn văn "phở bò", sang trang 2 — bảng giữ tiêu chí.</li>
+      <li>Terminal API chạy <code>LOG_SQL=1</code>: chỉ câu SQL thật.</li>
+    </ol>
+  </div>
+  <div class="notes">Trước buổi trình bày: khởi động lại API (npm run dev) để chạy code mới; mở sẵn DevTools.</div>
+</section>
+
+<!-- 18. Kết -->
+<section class="slide cover">
+  <span class="badge">Tổng kết</span>
+  <h1 style="font-size:54px">Thao tác trên toàn bộ kết quả<br><span style="color:var(--brand-600)">thì làm ở server.</span></h1>
+  <ul class="clean" style="margin-top:26px;max-width:780px">
+    <li>Ba kiểu hiển thị chỉ khác cách <strong>ghép các trang</strong>; API phân trang là một.</li>
+    <li>Ký tự người dùng nhập là <strong>dữ liệu</strong>: escape <code>%</code> <code>_</code>, mọi giá trị là tham số SQL.</li>
+    <li>Chọn quy tắc so khớp theo nhu cầu và <strong>công bố cấu hình</strong>: <code>simple</code>, ngưỡng 0.3, bỏ dấu khi gần đúng.</li>
+    <li>Bằng chứng trước khi sửa phải được ghi <strong>trước khi sửa</strong>.</li>
+  </ul>
+  <p style="margin-top:auto;font-size:30px;font-weight:800">Cảm ơn thầy và các bạn — Q&amp;A</p>
+  <div class="notes">Kết bằng 4 ý chính rồi mời đặt câu hỏi.</div>
+</section>
+
+</div></div>
+
+<div id="notesPanel"></div>
+<div class="hud">
+  <button type="button" id="prev" aria-label="Slide trước">‹</button>
+  <span id="count">1 / 1</span>
+  <button type="button" id="next" aria-label="Slide sau">›</button>
+  <button type="button" id="notesBtn" title="Ghi chú (N)">Ghi chú</button>
+  <button type="button" id="fsBtn" title="Toàn màn hình (F)">⛶</button>
+</div>
+
+<script>
+  // Điều khiển: ← → / Space / PageUp PageDown / Home End; F toàn màn hình; N ghi chú; số trang nằm trên #hash
+  const slides = [...document.querySelectorAll(".slide")];
+  const deck = document.getElementById("deck");
+  const count = document.getElementById("count");
+  const progress = document.getElementById("progress");
+  const notesPanel = document.getElementById("notesPanel");
+  slides.forEach((s, i) => {
+    const foot = document.createElement("div");
+    foot.className = "foot";
+    foot.innerHTML = `<span>Lửa Hồng · Block 7 — Tìm kiếm và phân trang</span><span>${i + 1} / ${slides.length}</span>`;
+    if (i > 0) s.appendChild(foot);
+  });
+
+  let current = 0;
+  function show(i) {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle("active", k === current));
+    count.textContent = `${current + 1} / ${slides.length}`;
+    progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+    const notes = slides[current].querySelector(".notes");
+    notesPanel.innerHTML = notes ? `<b>Ghi chú slide ${current + 1}:</b> ${notes.innerHTML}` : "";
+    if (location.hash !== `#${current + 1}`) history.replaceState(null, "", `#${current + 1}`);
+  }
+  function fit() {
+    const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+    deck.style.transform = `scale(${scale})`;
+  }
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen?.();
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); show(current + 1); }
+    else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); show(current - 1); }
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+    else if (e.key.toLowerCase() === "f") toggleFullscreen();
+    else if (e.key.toLowerCase() === "n") document.body.classList.toggle("show-notes");
+  });
+  document.getElementById("prev").onclick = () => show(current - 1);
+  document.getElementById("next").onclick = () => show(current + 1);
+  document.getElementById("notesBtn").onclick = () => document.body.classList.toggle("show-notes");
+  document.getElementById("fsBtn").onclick = toggleFullscreen;
+  window.addEventListener("resize", fit);
+  window.addEventListener("hashchange", () => show(parseInt(location.hash.slice(1), 10) - 1 || 0));
+
+  fit();
+  show(parseInt(location.hash.slice(1), 10) - 1 || 0);
+</script>
+</body>
+</html>
