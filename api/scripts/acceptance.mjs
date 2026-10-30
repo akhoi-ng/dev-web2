@@ -121,6 +121,16 @@ async function dishesRows() {
       dataIsArray: true,
     });
 
+    // % và _ người dùng gõ là ký tự thường, không được mở rộng phạm vi thành "mọi món"
+    const all = await check("dishes: tổng số món", { path: "/api/dishes?page=1" }, { ok: true });
+    const allTotal = all.json?.meta?.total;
+    for (const [label, encoded] of [["%", "%25"], ["_", "%5F"]]) {
+      await check(`dishes: q=${label} là ký tự thường`, { path: `/api/dishes?q=${encoded}&page=1` }, {
+        ok: true,
+        test: (j) => j.meta?.total < allTotal || `total = ${j.meta?.total}, bằng toàn bộ ${allTotal} món`,
+      });
+    }
+
     await check("dishes: POST thiếu name, price âm", { method: "POST", path: "/api/dishes", body: { name: "", price: -5 } }, {
       ok: false,
       code: "VALIDATION_FAILED",
