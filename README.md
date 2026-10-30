@@ -145,7 +145,10 @@ web/                                  # Frontend: React SPA
 │   ├── components/                   # Layout, Pagination, DataStatus, SearchForm, SearchError, ViewSwitch...
 │   ├── pages/
 │   │   ├── MenuPage.jsx              # thực đơn: tìm 4 mode, lọc, sắp xếp, 3 kiểu phân trang
-│   │   ├── menu/LoadMoreList.jsx     # lưới Tải thêm / Cuộn vô hạn (IntersectionObserver)
+│   │   ├── menu/
+│   │   │   ├── LoadMoreList.jsx      # lưới Tải thêm / Cuộn vô hạn (IntersectionObserver)
+│   │   │   ├── MenuHero.jsx          # phần đầu trang thực đơn, chứa SearchForm
+│   │   │   └── CategoryTiles.jsx, DishCard.jsx, BookingCta.jsx, InlineError.jsx
 │   │   ├── DishPage.jsx              # chi tiết món + đầu bếp + công thức
 │   │   ├── AboutPage.jsx
 │   │   ├── NotFoundPage.jsx, RouteErrorPage.jsx
@@ -167,7 +170,11 @@ web/                                  # Frontend: React SPA
 └── package.json
 
 docs/superpowers/                     # spec và plan của Block 6, Block 7
-evidence/                             # minh chứng (bug-like-wildcard.md: lỗi % _ trước/sau khi sửa)
+evidence/
+├── bug-like-wildcard.md              # lỗi % _ trước/sau khi sửa
+└── drive evidence link.txt           # link thư mục Google Drive chứa ảnh/video minh chứng
+BLOCK7.md                             # tóm tắt riêng phần làm Block 7
+BLOCK7-slides.html                    # slide HTML trình bày Block 7
 README.md
 .gitignore                            # node_modules/, .env, dist/
 ```
@@ -325,7 +332,7 @@ Trên Supabase của nhóm, `pg_trgm` được cài vào schema `public`; kiểm
 
 Cách sinh món (`buildCatalog()`):
 
-- 47 **mẫu món** (Phở, Bún, Cơm, Mỳ Ý, Pizza, Lẩu, Chè, Trà, Cà phê...), mỗi mẫu có công thức lõi
+- 44 **mẫu món** (Phở, Bún, Cơm, Mỳ Ý, Pizza, Lẩu, Chè, Trà, Cà phê...), mỗi mẫu có công thức lõi
   và 3–9 **biến thể** (ví dụ Phở: bò tái, gà, tái nạm, chay...; mỗi biến thể thêm nguyên liệu và
   chênh giá).
 - Nhân với **phong cách** ("", "đặc biệt", "kiểu nhà làm") và **khẩu phần** ("", "phần nhỏ",
@@ -509,7 +516,7 @@ khách tối đa 20, đặt trước tối đa 60 ngày, cùng `minDate`/`maxDat
 | `/admin/dishes?mode&q&category&minPrice&maxPrice&available&ingredient&sort&page` | Bảng món ăn + tìm kiếm 4 mode, phân trang số trang | `GET /api/dishes`, `GET /api/options` |
 | `/admin/dishes/new` | Form thêm món | `GET /api/chefs`, `/api/ingredients`, `/api/options`; `POST /api/dishes` |
 | `/admin/dishes/:id` | Chi tiết món trong quản trị | `GET /api/dishes/:id`; đích sau khi thêm/sửa |
-| `/admin/dishes/:id/edit` | Form sửa, điền sẵn từ DB | `GET /api/dishes/:id` + options; `PATCH /api/dishes/:id` |
+| `/admin/dishes/:id/edit` | Form sửa, điền sẵn từ DB | `GET /api/dishes/:id`, `/api/chefs`, `/api/ingredients`, `/api/options`; `PATCH /api/dishes/:id` |
 | `/admin/dishes/:id/delete` | Trang xác nhận xóa | `GET /api/dishes/:id`; chỉ nút xác nhận mới gọi `DELETE` |
 | `/admin/chefs?page` | Bảng đầu bếp kèm số món phụ trách | `GET /api/chefs` |
 | `/admin/chefs/new` | Form thêm đầu bếp (`name`, `specialty`, `imageUrl`) | `POST /api/chefs` |
@@ -925,7 +932,8 @@ npm test            # 22 test: client, dish-search (URL ⇄ tiêu chí), load-mo
 npm run build       # kiểm tra SPA build được
 ```
 
-Nếu `node --test` trong môi trường không mở rộng mẫu glob, truyền trực tiếp file:
+Mẫu glob trong `npm test` (`"test/**/*.test.js"`) chỉ được `node --test` mở rộng từ Node.js 21
+trở lên. Với Node 18–20 (hoặc môi trường không mở rộng mẫu glob), truyền trực tiếp file:
 
 ```bash
 # api
@@ -1089,7 +1097,7 @@ Kết quả mong đợi: `204`, `Access-Control-Allow-Origin: http://localhost:5
 | Ba kiểu phân trang ở thực đơn | Đã có |
 | Đăng nhập / phân quyền | **Không có**. Mọi endpoint quản trị đều công khai, nằm ngoài phạm vi bài này; không dùng cho production |
 | Test | Unit test cho API và SPA (logic thuần); acceptance script cần API chạy. Không có test end-to-end trình duyệt: giao diện ba kiểu phân trang được kiểm tra thủ công theo mục 13.4 |
-| Thư mục `evidence/` | Có `bug-like-wildcard.md` (lỗi `%`/`_`, trước và sau khi sửa). **Ảnh chụp màn hình/Network do nhóm bổ sung** theo danh sách ở mục 17 |
+| Thư mục `evidence/` | Có `bug-like-wildcard.md` (lỗi `%`/`_`, trước và sau khi sửa) và `drive evidence link.txt` (link thư mục Google Drive chứa ảnh chụp màn hình/Network, video theo danh sách ở mục 17) |
 
 Các điểm cần biết thêm:
 
@@ -1231,12 +1239,12 @@ Toàn bộ log trước/sau: `evidence/bug-like-wildcard.md`.
 
 | Yêu cầu (slide 42) | Bằng chứng | Ở đâu |
 | --- | --- | --- |
-| Số bản ghi trong Supabase và script seed ≥ 1.000 món | `SELECT count(*) FROM dishes` → **1500**; `ingredients` 103, `dish_ingredients` 5.094. Script: `api/prisma/seed.js` + `api/prisma/catalog.js`, chạy `npm run db:seed` | Mục 6; ảnh Table Editor/SQL Editor của Supabase: `evidence/` (nhóm bổ sung) |
-| Demo ba kiểu hiển thị phân trang và filter/sort | Kịch bản ở mục 13.4 | Video/ảnh: `evidence/` (nhóm bổ sung) |
-| URL search, Network và query tại PostgreSQL | URL mẫu ở mục 13.3; Network ở câu 3 mục 16; SQL thật (`LOG_SQL=1`) ở mục 11.4 | Ảnh Network: `evidence/` (nhóm bổ sung) |
+| Số bản ghi trong Supabase và script seed ≥ 1.000 món | `SELECT count(*) FROM dishes` → **1500**; `ingredients` 103, `dish_ingredients` 5.094. Script: `api/prisma/seed.js` + `api/prisma/catalog.js`, chạy `npm run db:seed` | Mục 6; ảnh Table Editor/SQL Editor của Supabase: thư mục Google Drive (link trong `evidence/drive evidence link.txt`) |
+| Demo ba kiểu hiển thị phân trang và filter/sort | Kịch bản ở mục 13.4 | Video/ảnh: thư mục Google Drive (link trong `evidence/drive evidence link.txt`) |
+| URL search, Network và query tại PostgreSQL | URL mẫu ở mục 13.3; Network ở câu 3 mục 16; SQL thật (`LOG_SQL=1`) ở mục 11.4 | Ảnh Network: thư mục Google Drive (link trong `evidence/drive evidence link.txt`) |
 | Một lỗi đã phát hiện, cách tái hiện và bằng chứng sau khi sửa | Lỗi `%`/`_` (câu 4 mục 16) | `evidence/bug-like-wildcard.md`, commit `407ae17` (trước) và `83f981e` (sau) |
 
-Ảnh nên chụp cho `evidence/`:
+Ảnh nên chụp (đã tải lên thư mục Google Drive, link trong `evidence/drive evidence link.txt`):
 
 1. Supabase SQL Editor: `SELECT count(*) FROM dishes;` = 1500.
 2. `/dishes` ở ba kiểu (Số trang trang 2, Tải thêm sau vài lần bấm, Cuộn vô hạn) kèm tab Network.

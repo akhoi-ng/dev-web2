@@ -95,7 +95,7 @@ Cả ba gọi cùng một API phân trang ở server, mỗi lần 9 món.
 | `dish_ingredients` | 5.094 |
 | `chefs` | 5 |
 
-- Món sinh từ 47 mẫu (Phở, Bún, Cơm, Pizza, Lẩu, Chè, Trà...) × biến thể × phong cách × khẩu
+- Món sinh từ 44 mẫu (Phở, Bún, Cơm, Pizza, Lẩu, Chè, Trà...) × biến thể × phong cách × khẩu
   phần, xáo bằng PRNG có seed cố định → **mỗi lần seed ra đúng cùng một thực đơn**.
 - Có 3 món chứa ký tự đặc biệt để thử escape: `Combo 100% bò Úc`, `Bánh 50% đường`,
   `Trà_sữa_nhà_làm`.
