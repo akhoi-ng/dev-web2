@@ -15,7 +15,7 @@ bật `pg_trgm` và có index tìm kiếm; README đã viết lại thành báo 
 | --- | --- | --- |
 | 1 | Sửa lỗi tìm `%` / `_` trả về toàn bộ thực đơn (lỗi có từ Block 6) | `api/src/utils/helpers.js` (`escapeLike`) |
 | 2 | Đọc và kiểm tra tham số tìm kiếm (`mode`, `q`, `minPrice`, `maxPrice`, `available`, `ingredient`) | `api/src/utils/validators.js` (`parseDishSearch`) |
-| 3 | Migration tìm kiếm: `pg_trgm` + index GIN full-text và trigram | `api/prisma/search.sql`, script `npm run db:search` |
+| 3 | Migration tìm kiếm: `pg_trgm`, `unaccent` + index GIN full-text và trigram | `api/prisma/search.sql`, script `npm run db:search` |
 | 4 | Tìm kiếm 4 mode trong API | `api/src/db/dish-search.js`, `api/src/routes/dishes.js` |
 | 5 | In câu SQL thật ra terminal khi đặt `LOG_SQL=1` | `api/src/db/prisma.js` |
 | 6 | Seed 1.500 món, 103 nguyên liệu, sinh cố định | `api/prisma/catalog.js`, `api/prisma/seed.js` |
@@ -51,7 +51,7 @@ API: `GET /api/dishes?mode=...&q=...&page=...&pageSize=...`
 | `basic` | Cơ bản | Tên **chứa** từ khóa, không phân biệt hoa/thường | Danh mục | Theo ô "Sắp xếp" |
 | `advanced` | Nâng cao | Như Cơ bản | Danh mục, giá từ/đến, tình trạng (còn/tạm hết), nguyên liệu — kết hợp AND | Theo ô "Sắp xếp" |
 | `fulltext` | Toàn văn | Tên + mô tả chứa **mọi từ** của từ khóa (PostgreSQL full-text, cấu hình `simple`) | Danh mục | Điểm `ts_rank` giảm dần, rồi `id` |
-| `fuzzy` | Gần đúng | Tên có đoạn **gần giống** từ khóa, gõ sai vẫn ra (`word_similarity ≥ 0.3`) | Danh mục | Điểm giảm dần, rồi `id` |
+| `fuzzy` | Gần đúng | Tên có đoạn **gần giống** từ khóa, gõ sai hoặc **không dấu** vẫn ra (`word_similarity(unaccent(q), unaccent(name)) ≥ 0.3`) | Danh mục | Điểm giảm dần, rồi `id` |
 
 Quy ước cần nhớ:
 
@@ -113,6 +113,16 @@ Cả ba gọi cùng một API phân trang ở server, mỗi lần 9 món.
 - **Sau khi sửa:** kiểm tra chuyển sang PASS, `total = 0`; với seed mới `q=%` ra đúng 2 món.
 - Chi tiết: `evidence/bug-like-wildcard.md`.
 
+### Lỗi thứ hai: Gần đúng gõ "bun" không ra "bún"
+
+- **Phát hiện:** khi bấm thử giao diện, chế độ Gần đúng gõ `bún` ra 42 món, gõ `bun` ra 0 món.
+- **Nguyên nhân:** `pg_trgm` cắt chuỗi thành nhóm 3 ký tự và coi `ú` khác `u`. `bun` và `bún` chỉ
+  chung 1/4 nhóm → điểm 0.25, dưới ngưỡng 0.3.
+- **Sửa:** bật extension `unaccent` (`api/prisma/search.sql`) và so
+  `word_similarity(unaccent(q), unaccent(name))` (`api/src/db/dish-search.js`).
+- **Sau khi sửa:** `bun` ra 42 món như `bún`, "Bún chả Hà Nội" đứng đầu; acceptance thêm dòng
+  `PASS search: fuzzy q=bun (không dấu) = q=bún` (75/75 PASS).
+
 ## 8. Kết quả kiểm tra
 
 | Lệnh | Kết quả |
@@ -120,7 +130,7 @@ Cả ba gọi cùng một API phân trang ở server, mỗi lần 9 món.
 | `cd api && npm test` | 71/71 pass |
 | `cd web && npm test` | 22/22 pass |
 | `cd web && npm run build` | Build thành công |
-| `cd api && npm run acceptance` (trên 1.500 món) | 74/74 PASS, gồm 14 dòng tìm kiếm mới |
+| `cd api && npm run acceptance` (trên 1.500 món) | 75/75 PASS, gồm 15 dòng tìm kiếm mới |
 
 ## 9. Quyết định đã chọn
 

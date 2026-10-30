@@ -423,6 +423,15 @@ async function searchRows() {
     test: (j) => lower(j.data?.[0]?.name).includes("carbonara") || `món đầu: ${j.data?.[0]?.name}`,
   });
 
+  // Gần đúng không phân biệt dấu: gõ "bun" phải ra cùng kết quả với "bún"
+  const bunCoDau = await getJson("/api/dishes?mode=fuzzy&q=b%C3%BAn&page=1&pageSize=50");
+  await check("search: fuzzy q=bun (không dấu) = q=bún", { path: "/api/dishes?mode=fuzzy&q=bun&page=1&pageSize=50" }, {
+    ok: true,
+    test: (j) =>
+      (j.meta?.total > 0 && j.meta.total === bunCoDau.meta?.total && lower(j.data[0]?.name).includes("bún")) ||
+      `bun: ${j.meta?.total} món, bún: ${bunCoDau.meta?.total} món, món đầu: ${j.data?.[0]?.name}`,
+  });
+
   const basic = await getJson("/api/dishes?q=ph%E1%BB%9F&page=1&pageSize=50");
   await check("search: basic và advanced cùng q cho cùng kết quả", { path: "/api/dishes?mode=advanced&q=ph%E1%BB%9F&page=1&pageSize=50" }, {
     ok: true,

@@ -5,6 +5,9 @@
 -- Tìm gần đúng (fuzzy) dùng similarity / word_similarity của pg_trgm
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+-- Gần đúng không phân biệt dấu: so unaccent(q) với unaccent(name) ("bun" khớp "bún")
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 -- Full-text: biểu thức PHẢI trùng y hệt biểu thức trong truy vấn (api/src/db/dish-search.js)
 -- thì PostgreSQL mới dùng được index. description có thể NULL nên dùng coalesce.
 CREATE INDEX IF NOT EXISTS dishes_fts_idx ON dishes

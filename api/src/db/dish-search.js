@@ -35,19 +35,23 @@ const FUZZY_THRESHOLD = 0.3;
 const FTS_DOCUMENT = Prisma.sql`to_tsvector('simple', name || ' ' || coalesce(description, ''))`;
 const ftsQuery = (q) => Prisma.sql`plainto_tsquery('simple', ${q})`;
 
+// Điểm gần đúng, bỏ dấu cả hai phía: pg_trgm coi "ú" khác "u", nên không có unaccent thì
+// "bun" và "bún" chỉ chung 1/4 trigram (0.25 < 0.3) và không khớp.
+const fuzzyScore = (q) => Prisma.sql`word_similarity(unaccent(${q}), unaccent(name))`;
+
 // Điều kiện WHERE dùng chung cho câu đếm và câu lấy id, nên total và items cùng một predicate.
 function rankedFilterSql(search) {
   const text =
     search.mode === "fulltext"
       ? Prisma.sql`${FTS_DOCUMENT} @@ ${ftsQuery(search.q)}`
-      : Prisma.sql`word_similarity(${search.q}, name) >= ${FUZZY_THRESHOLD}`;
+      : Prisma.sql`${fuzzyScore(search.q)} >= ${FUZZY_THRESHOLD}`;
   return search.category ? Prisma.sql`${text} AND category = ${search.category}` : text;
 }
 
 function rankedScoreSql(search) {
   return search.mode === "fulltext"
     ? Prisma.sql`ts_rank(${FTS_DOCUMENT}, ${ftsQuery(search.q)})`
-    : Prisma.sql`word_similarity(${search.q}, name)`;
+    : fuzzyScore(search.q);
 }
 
 async function countRanked(prisma, search) {

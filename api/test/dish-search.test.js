@@ -61,11 +61,11 @@ test("rankedFilterSql: category thêm điều kiện AND có tham số", () => {
   assert.match(sql.text, /AND category = \$2/);
 });
 
-test("rankedFilterSql fuzzy: word_similarity với ngưỡng 0.3", () => {
+test("rankedFilterSql fuzzy: word_similarity bỏ dấu cả hai phía, ngưỡng 0.3", () => {
   const sql = rankedFilterSql(search({ mode: "fuzzy", q: "carbonra" }));
-  assert.match(sql.text, /word_similarity\(\$1, name\) >= \$2/);
+  assert.match(sql.text, /word_similarity\(unaccent\(\$1\), unaccent\(name\)\) >= \$2/);
   assert.deepEqual(sql.values, ["carbonra", 0.3]);
-  assert.match(rankedScoreSql(search({ mode: "fuzzy", q: "x" })).text, /word_similarity/);
+  assert.match(rankedScoreSql(search({ mode: "fuzzy", q: "x" })).text, /word_similarity\(unaccent\(\$1\), unaccent\(name\)\)/);
   assert.match(rankedScoreSql(search({ mode: "fulltext", q: "x" })).text, /ts_rank/);
 });
 

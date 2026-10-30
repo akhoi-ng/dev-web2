@@ -299,6 +299,9 @@ database.
 ```sql
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
+-- Gần đúng không phân biệt dấu: so unaccent(q) với unaccent(name)
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 -- Full-text: biểu thức PHẢI trùng y hệt biểu thức trong truy vấn thì index mới được dùng
 CREATE INDEX IF NOT EXISTS dishes_fts_idx ON dishes
   USING GIN (to_tsvector('simple', name || ' ' || coalesce(description, '')));
@@ -721,7 +724,7 @@ Tìm kiếm luôn chạy ở server trên **toàn bộ** bảng `dishes`; SPA ch
 | `basic` (Cơ bản) | Một ô từ khóa | Tên **chứa** `q`, không phân biệt hoa/thường (`ILIKE`) | `category` | `sort` |
 | `advanced` (Nâng cao) | Ô từ khóa + giá từ/đến, tình trạng, nguyên liệu | Như `basic` | `category`, `minPrice`, `maxPrice`, `available`, `ingredient` | `sort` |
 | `fulltext` (Toàn văn) | Một ô từ khóa | `to_tsvector('simple', tên + mô tả) @@ plainto_tsquery('simple', q)`: món chứa **mọi từ** của `q` trong tên hoặc mô tả | `category` | `ts_rank` giảm dần, `id` tăng dần |
-| `fuzzy` (Gần đúng) | Một ô từ khóa | `word_similarity(q, name) >= 0.3` (`pg_trgm`): tên có đoạn **gần giống** `q`, chịu được gõ sai | `category` | `word_similarity` giảm dần, `id` tăng dần |
+| `fuzzy` (Gần đúng) | Một ô từ khóa | `word_similarity(unaccent(q), unaccent(name)) >= 0.3` (`pg_trgm` + `unaccent`): tên có đoạn **gần giống** `q`, chịu được gõ sai và **gõ không dấu** | `category` | `word_similarity` giảm dần, `id` tăng dần |
 
 - `basic` và `advanced` với cùng một `q` (không có tiêu chí khác) cho **cùng kết quả**
   (acceptance kiểm tra).
@@ -739,6 +742,20 @@ Tìm kiếm luôn chạy ở server trên **toàn bộ** bảng `dishes`; SPA ch
 | `q` | Tên món | `similarity` | `word_similarity` |
 | --- | --- | --- | --- |
 | `carbonra` | Mỳ Ý Carbonara | 0.41 | 0.67 |
+
+**Gần đúng không phân biệt dấu (`unaccent`).** `pg_trgm` cắt chuỗi thành trigram và coi `ú`
+khác `u`: `bun` → `{"  b"," bu","bun","un "}`, `bún` → `{"  b"," bú","bún","ún "}`, chỉ chung
+1/4 trigram nên `word_similarity = 0.25 < 0.3` và gõ "bun" không ra món nào. Nhóm phát hiện khi
+thử giao diện và sửa bằng extension `unaccent`, bỏ dấu **cả hai phía** trước khi so:
+
+| `q` | Trước khi sửa | Sau khi sửa |
+| --- | --- | --- |
+| `bún` | 42 món | 42 món |
+| `bun` | **0 món** (điểm cao nhất 0.25) | **42 món**, "Bún chả Hà Nội" đứng đầu (1.00) |
+| `bun bo hue` | 0 món | "Bún bò Huế" đứng đầu |
+
+Hệ quả: `pho` khớp cả "Phở ..." và "Khoai tây chiên phô mai" với điểm 1.00 — đúng tinh thần
+"gần giống, không phân biệt dấu". Acceptance có dòng `fuzzy q=bun (không dấu) = q=bún`.
 
 ### 11.2. Ký tự đặc biệt là dữ liệu
 
@@ -809,11 +826,11 @@ SELECT "dishes"."id", ... FROM "dishes" ... WHERE "dishes"."id" IN ($1,$2,...,$9
 **`fuzzy`** — `/api/dishes?mode=fuzzy&q=carbonra&page=1`
 
 ```sql
-SELECT count(*) AS total FROM dishes WHERE word_similarity($1, name) >= $2
+SELECT count(*) AS total FROM dishes WHERE word_similarity(unaccent($1), unaccent(name)) >= $2
 
 SELECT id FROM dishes
-WHERE word_similarity($1, name) >= $2
-ORDER BY word_similarity($3, name) DESC, id ASC
+WHERE word_similarity(unaccent($1), unaccent(name)) >= $2
+ORDER BY word_similarity(unaccent($3), unaccent(name)) DESC, id ASC
 LIMIT $4 OFFSET $5
 ```
 
@@ -938,6 +955,7 @@ PASS dishes: q=_ là ký tự thường
 PASS search: fulltext q=phở -> tên/mô tả chứa phở
 PASS search: fulltext q chỉ có dấu câu -> rỗng, không lỗi
 PASS search: fuzzy q=carbonra -> Carbonara đứng đầu
+PASS search: fuzzy q=bun (không dấu) = q=bún
 PASS search: basic và advanced cùng q cho cùng kết quả
 PASS search: advanced available=false chỉ món tạm hết
 PASS search: advanced minPrice=0&maxPrice=60000 trong khoảng
@@ -1089,8 +1107,9 @@ Các điểm cần biết thêm:
   đổi đúng giữa hai truy vấn, "Trang x/y" có thể lệch một trang trong một lần tải.
 - `GET /api/dishes` không có `page` vẫn trả **toàn bộ** danh sách (giữ hành vi Block 6). Với
   1.500 món phản hồi khoảng **1 MB**; SPA không gọi dạng này cho thực đơn hay bảng quản lý.
-- Full-text dùng cấu hình `simple`: không bỏ dấu, nên "pho" không khớp "phở" (dùng chế độ Gần
-  đúng nếu không gõ dấu được một phần). Không có từ đồng nghĩa hay stemming tiếng Việt.
+- Full-text dùng cấu hình `simple` (theo yêu cầu slide 38): không bỏ dấu, nên "pho" không khớp
+  "phở" ở chế độ Toàn văn — dùng chế độ Gần đúng (đã bỏ dấu) khi gõ không dấu. Không có từ đồng
+  nghĩa hay stemming tiếng Việt.
 - Fuzzy dùng `word_similarity(...) >= 0.3` trong `WHERE` nên PostgreSQL quét tuần tự bảng
   `dishes` (index trigram chỉ được dùng với toán tử `%`/`<%`). Với 1.500 món, mỗi truy vấn vẫn
   nhanh; bảng lớn hơn nên chuyển sang `q <% name` và đặt `pg_trgm.word_similarity_threshold`.
