@@ -397,7 +397,84 @@ async function bookingsRows() {
   }, { ok: false, code: "NOT_FOUND" });
 }
 
+/* ---------------- Tìm kiếm món (Block 7) ---------------- */
+async function getJson(path) {
+  const res = await fetch(API + path, { headers: { Origin: ORIGIN } });
+  return res.json();
+}
+
+const ids = (j) => (j?.data || []).map((d) => d.id);
+const lower = (s) => (s || "").toLocaleLowerCase("vi");
+
+async function searchRows() {
+  await check("search: fulltext q=phở -> tên/mô tả chứa phở", { path: "/api/dishes?mode=fulltext&q=ph%E1%BB%9F&page=1&pageSize=50" }, {
+    ok: true,
+    test: (j) =>
+      (j.meta?.total > 0 && j.meta.mode === "fulltext" &&
+        j.data.every((d) => lower(d.name + " " + d.description).includes("phở"))) ||
+      `total = ${j.meta?.total}, mode = ${j.meta?.mode}`,
+  });
+  await check("search: fulltext q chỉ có dấu câu -> rỗng, không lỗi", { path: "/api/dishes?mode=fulltext&q=!!!&page=1" }, {
+    ok: true,
+    test: (j) => j.meta?.total === 0 || `total = ${j.meta?.total}`,
+  });
+  await check("search: fuzzy q=carbonra -> Carbonara đứng đầu", { path: "/api/dishes?mode=fuzzy&q=carbonra&page=1" }, {
+    ok: true,
+    test: (j) => lower(j.data?.[0]?.name).includes("carbonara") || `món đầu: ${j.data?.[0]?.name}`,
+  });
+
+  const basic = await getJson("/api/dishes?q=ph%E1%BB%9F&page=1&pageSize=50");
+  await check("search: basic và advanced cùng q cho cùng kết quả", { path: "/api/dishes?mode=advanced&q=ph%E1%BB%9F&page=1&pageSize=50" }, {
+    ok: true,
+    test: (j) =>
+      (j.meta?.total === basic.meta?.total && JSON.stringify(ids(j)) === JSON.stringify(ids(basic))) ||
+      `advanced ${j.meta?.total} món, basic ${basic.meta?.total} món`,
+  });
+
+  await check("search: advanced available=false chỉ món tạm hết", { path: "/api/dishes?mode=advanced&available=false&page=1&pageSize=50" }, {
+    ok: true,
+    test: (j) => (j.meta?.total > 0 && j.data.every((d) => d.available === false)) || `total = ${j.meta?.total}`,
+  });
+  await check("search: advanced minPrice=0&maxPrice=60000 trong khoảng", { path: "/api/dishes?mode=advanced&minPrice=0&maxPrice=60000&page=1&pageSize=50" }, {
+    ok: true,
+    test: (j) => (j.meta?.total > 0 && j.data.every((d) => d.price >= 0 && d.price <= 60000)) || `total = ${j.meta?.total}`,
+  });
+  await check("search: advanced ingredient=mozzarella", { path: "/api/dishes?mode=advanced&ingredient=mozzarella&page=1&pageSize=50" }, {
+    ok: true,
+    test: (j) => j.meta?.total > 0 || `total = ${j.meta?.total}`,
+  });
+  await check("search: advanced minPrice=abc -> VALIDATION_FAILED", { path: "/api/dishes?mode=advanced&minPrice=abc" }, {
+    ok: false,
+    code: "VALIDATION_FAILED",
+    fieldsHas: ["minPrice"],
+  });
+  await check("search: mode=xyz -> VALIDATION_FAILED", { path: "/api/dishes?mode=xyz" }, {
+    ok: false,
+    code: "VALIDATION_FAILED",
+    fieldsHas: ["mode"],
+  });
+  await check("search: basic bỏ qua tham số nâng cao còn sót", { path: "/api/dishes?mode=basic&minPrice=abc&page=1" }, { ok: true });
+  await check("search: fulltext page vượt -> trang cuối", { path: "/api/dishes?mode=fulltext&q=ph%E1%BB%9F&page=99999" }, {
+    ok: true,
+    test: (j) => (j.meta?.page === j.meta?.totalPages && j.data.length > 0) || `page ${j.meta?.page}/${j.meta?.totalPages}`,
+  });
+
+  // Đi hết các trang của một kết quả xếp hạng: không mất, không lặp món
+  const first = await getJson("/api/dishes?mode=fuzzy&q=ga&page=1&pageSize=50");
+  const seen = [];
+  for (let p = 1; p <= (first.meta?.totalPages || 0); p++) {
+    seen.push(...ids(await getJson(`/api/dishes?mode=fuzzy&q=ga&page=${p}&pageSize=50`)));
+  }
+  await check("search: fuzzy đi hết các trang = total, không trùng", { path: "/api/dishes?mode=fuzzy&q=ga&page=1&pageSize=50" }, {
+    ok: true,
+    test: (j) =>
+      (seen.length === j.meta?.total && new Set(seen).size === seen.length) ||
+      `gom ${seen.length} id (${new Set(seen).size} khác nhau), total ${j.meta?.total}`,
+  });
+}
+
 await dishesRows();
+await searchRows();
 await chefsRows();
 await ingredientsRows();
 await bookingsRows();
