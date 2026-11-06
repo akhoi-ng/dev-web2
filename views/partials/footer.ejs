@@ -30,7 +30,9 @@
         <h2 id="footer-help" class="<%= heading %>">Hỗ trợ</h2>
         <a href="/bookings/new" class="<%= footLink %>">Đặt bàn</a>
         <a href="/about" class="<%= footLink %>">Về chúng tôi</a>
-        <a href="/admin/dishes" class="<%= footLink %>">Trang quản trị</a>
+        <% if (!locals.currentUser || currentUser.role === "admin") { %>
+          <a href="/admin/dishes" class="<%= footLink %>">Trang quản trị</a>
+        <% } %>
       </nav>
 
       <div class="col-span-2 flex flex-col gap-3 text-sm lg:col-span-1">
@@ -57,5 +59,26 @@
       </div>
     </div>
   </footer>
+  <script>
+    // Chống gửi form hai lần (Enter + click, double-click): khóa nút submit sau lần gửi đầu.
+    // Ví dụ OTP: lần 1 kích hoạt thành công, lần 2 nhận "mã đã dùng" và browser hiện lỗi của lần 2.
+    document.addEventListener("submit", function (e) {
+      const form = e.target;
+      if ((form.method || "").toLowerCase() !== "post") return;
+      if (form.dataset.submitted) { e.preventDefault(); return; }
+      form.dataset.submitted = "1";
+      // Khóa sau khi browser đã lấy dữ liệu form (nút bị disabled trước đó sẽ không được gửi)
+      setTimeout(function () {
+        form.querySelectorAll('button[type="submit"], button:not([type])').forEach(function (b) { b.disabled = true; });
+      }, 0);
+    });
+    // Quay lại trang bằng nút Back (bfcache): mở khóa form
+    window.addEventListener("pageshow", function () {
+      document.querySelectorAll("form[data-submitted]").forEach(function (form) {
+        delete form.dataset.submitted;
+        form.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
+      });
+    });
+  </script>
 </body>
 </html>

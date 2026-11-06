@@ -1,0 +1,12 @@
+<%# Thông báo của trang xác thực. Biến: errors (mảng), code (mã lỗi hoặc null), notice (chuỗi hoặc null) %>
+<% if (locals.notice) { %>
+  <div class="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800" role="status"><%= notice %></div>
+<% } %>
+<% if (locals.errors && errors.length > 0) { %>
+  <div class="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert" data-error-code="<%= locals.code || '' %>">
+    <ul class="space-y-0.5">
+      <% errors.forEach(function (e) { %><li><%= e %></li><% }) %>
+    </ul>
+    <% if (locals.code) { %><p class="mt-2 text-xs text-red-500">Mã lỗi: <%= code %></p><% } %>
+  </div>
+<% } %>

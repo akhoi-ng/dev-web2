@@ -80,3 +80,87 @@ model DishIngredient {
   @@index([ingredientId])
   @@map("dish_ingredients")
 }
+
+// ───────────────────────── Block 8: xác thực tài khoản ─────────────────────────
+
+// Tài khoản. `email` là bản chuẩn hóa (cắt khoảng trắng, chữ thường) dùng để so sánh và là khóa
+// duy nhất; `emailInput` là bản người dùng gõ, chỉ để hiển thị. Không bao giờ lưu password gốc.
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  emailInput      String
+  passwordHash    String // Argon2id, chuỗi PHC có thuật toán, tham số, salt
+  role            String    @default("viewer") // server gán; form đăng ký không đổi được
+  status          String    @default("pending") // pending | active
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions       Session[]
+  activation     ActivationChallenge?
+  passwordResets PasswordReset[]
+
+  @@map("users")
+}
+
+// OTP kích hoạt: một dòng cho mỗi tài khoản pending. Gửi lại thì ghi đè otpHash nên mã cũ mất
+// hiệu lực; attempts gắn với tài khoản, không về 0 khi gửi lại.
+model ActivationChallenge {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  purpose     String    @default("activation")
+  otpHash     String // HMAC-SHA256(SESSION_SECRET, userId:otp), không lưu OTP
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  lockedUntil DateTime?
+  lastSentAt  DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("activation_challenges")
+}
+
+// Reset token: token gốc chỉ nằm trong email; DB lưu SHA-256 của token.
+model PasswordReset {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+// Phiên đăng nhập lưu ở PostgreSQL (khởi động lại server không mất). Cookie `sid` chỉ mang mã
+// ngẫu nhiên; DB lưu SHA-256 của mã đó nên đọc được bảng này vẫn không dựng lại được cookie.
+model Session {
+  sidHash           String   @id
+  userId            Int
+  createdAt         DateTime @default(now())
+  expiresAt         DateTime // hạn không hoạt động, gia hạn khi người dùng còn thao tác
+  absoluteExpiresAt DateTime // hạn tối đa tính từ lúc đăng nhập, không gia hạn
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// Bộ đếm cho rate limit và đăng nhập sai. key ví dụ: "login-fail:email:an@example.com",
+// "login:ip:127.0.0.1", "register:ip:...", "forgot:email:...". Đếm trong cửa sổ bắt đầu ở
+// windowStart; lockedUntil là thời điểm hết khóa tạm.
+model AuthThrottle {
+  key         String    @id
+  count       Int
+  windowStart DateTime
+  lockedUntil DateTime?
+
+  @@map("auth_throttles")
+}

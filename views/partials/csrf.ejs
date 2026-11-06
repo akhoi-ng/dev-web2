@@ -1,0 +1,2 @@
+<%# CSRF token gắn với phiên hiện tại (xem src/auth/csrf.js). Mọi form POST đều phải có. %>
+<input type="hidden" name="_csrf" value="<%= locals.csrfToken || '' %>">

@@ -1,0 +1,32 @@
+<%- include("../partials/header") %>
+<% const input = "mt-1 w-full rounded-xl border border-stone-300 px-4 py-2.5 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"; %>
+
+<div class="mx-auto max-w-md">
+  <%- include("../partials/page-heading", { heading: "Tạo tài khoản", subheading: "Sau khi đăng ký, nhập mã OTP gửi qua email để kích hoạt." }) %>
+  <%- include("../partials/auth-alert", { errors, code }) %>
+
+  <form method="POST" action="/register" class="space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8">
+    <%- include("../partials/csrf") %>
+    <div>
+      <label for="email" class="text-sm font-semibold">Email <span class="text-red-500">*</span></label>
+      <input id="email" name="email" type="email" value="<%= email %>" maxlength="254" autocomplete="email" required class="<%= input %>">
+    </div>
+    <div>
+      <label for="password" class="text-sm font-semibold">Mật khẩu <span class="text-red-500">*</span></label>
+      <input id="password" name="password" type="password" minlength="<%= policy.password.min %>" maxlength="<%= policy.password.max %>" autocomplete="new-password" required class="<%= input %>">
+      <p class="mt-1 text-xs text-stone-500">Từ <%= policy.password.min %> đến <%= policy.password.max %> ký tự.</p>
+    </div>
+    <div>
+      <label for="confirm" class="text-sm font-semibold">Nhập lại mật khẩu <span class="text-red-500">*</span></label>
+      <input id="confirm" name="confirm" type="password" maxlength="<%= policy.password.max %>" autocomplete="new-password" required class="<%= input %>">
+    </div>
+    <%- include("../partials/captcha", { siteKey: recaptchaSiteKey }) %>
+    <button type="submit" class="w-full rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white hover:bg-brand-700">Đăng ký</button>
+    <p class="text-center text-sm text-stone-500">
+      Đã có tài khoản? <a href="/login" class="font-semibold text-brand-700 hover:underline">Đăng nhập</a>
+      · <a href="/activate" class="font-semibold text-brand-700 hover:underline">Nhập mã kích hoạt</a>
+    </p>
+  </form>
+</div>
+
+<%- include("../partials/footer") %>

@@ -1,22 +1,12 @@
 <%- include("../partials/header") %>
 
 <%
-  // Tạo link lọc, giữ lại từ khóa tìm kiếm + kiểu sắp xếp đang có; #thuc-don để trang mới cuộn tới thực đơn
-  const filterHref = function (c) {
-    const params = [];
-    if (c) params.push("category=" + encodeURIComponent(c));
-    if (q) params.push("q=" + encodeURIComponent(q));
-    if (sort !== "default") params.push("sort=" + encodeURIComponent(sort));
-    return "/dishes" + (params.length ? "?" + params.join("&") : "");
-  };
-  // Link phân trang, giữ lại danh mục + từ khóa + sắp xếp
-  const pageHref = function (p) {
-    const base = filterHref(category);
-    if (p <= 1) return base + "#thuc-don";
-    return base + (base.includes("?") ? "&" : "?") + "page=" + p + "#thuc-don";
-  };
+  // Link danh mục giữ nguyên từ khóa, kiểu tìm, sắp xếp, kiểu phân trang (xem menuHref trong route)
+  const categoryHref = function (c) { return menuHref({ category: c }); };
+  const clearHref = "/dishes" + (view !== "pages" ? "?view=" + view : "") + "#thuc-don";
   const card = "rounded-3xl border border-[#EADBD2] bg-white";
   const heroImages = tiles.filter(function (t) { return t.imageUrl; }).slice(0, 3);
+  const modeLabel = modes[search.mode];
 %>
 
 <!-- Phần đầu trang -->
@@ -26,18 +16,9 @@
     <h1 class="text-[2.5rem] font-extrabold leading-[1.05] tracking-tight sm:text-5xl">Bữa ngon ấm áp,<br>gọi món thật dễ.</h1>
     <p class="max-w-lg text-lg leading-relaxed text-stone-600">Xem giá, thành phần và tình trạng từng món ngay trên điện thoại. Chọn xong rồi đến, khỏi phải chờ đợi.</p>
 
-    <form method="GET" action="/dishes#thuc-don" role="search" class="flex max-w-xl gap-2 rounded-2xl border border-[#EADBD2] bg-white p-1.5">
-      <% if (category) { %>
-        <input type="hidden" name="category" value="<%= category %>">
-      <% } %>
-      <% if (sort !== "default") { %>
-        <input type="hidden" name="sort" value="<%= sort %>">
-      <% } %>
-      <label for="q" class="sr-only">Tìm món ăn</label>
-      <input id="q" type="search" name="q" value="<%= q %>" placeholder="Tìm món: phở, bún chả, tiramisu…"
-             class="min-w-0 flex-1 rounded-xl border-0 bg-transparent px-3.5 py-3 text-base placeholder-stone-400 focus:ring-0">
-      <button type="submit" class="min-h-12 rounded-xl bg-brand-600 px-6 font-bold text-white hover:bg-brand-700">Tìm</button>
-    </form>
+    <div class="max-w-2xl">
+      <%- include("../partials/search-form", { action: "/dishes#thuc-don", form, modes, sort, view, idPrefix: "menu" }) %>
+    </div>
 
     <dl class="flex flex-wrap gap-x-8 gap-y-3 pt-1">
       <div class="flex flex-col-reverse"><dt class="text-sm text-stone-500">món ăn</dt><dd class="text-3xl font-extrabold"><%= stats.dishes %></dd></div>
@@ -66,7 +47,7 @@
   <h2 id="danh-muc" class="mb-4 text-2xl font-extrabold tracking-tight">Hôm nay bạn muốn ăn gì?</h2>
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
     <% tiles.forEach(function (t) { %>
-      <a href="<%= filterHref(t.name) %>#thuc-don" class="group flex flex-col gap-2.5 <%= card %> p-3 transition hover:border-brand-300 hover:shadow-md">
+      <a href="<%= categoryHref(t.name) %>" class="group flex flex-col gap-2.5 <%= card %> p-3 transition hover:border-brand-300 hover:shadow-md">
         <span class="block h-24 overflow-hidden rounded-2xl bg-brand-50 sm:h-28">
           <% if (t.imageUrl) { %>
             <img src="<%= t.imageUrl %>" alt="" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-105"
@@ -87,81 +68,97 @@
   <div class="mb-4 flex flex-wrap items-end justify-between gap-4">
     <div>
       <h2 class="text-3xl font-extrabold tracking-tight">
-        <% if (q) { %>
-          Kết quả cho “<%= q %>”<%= category ? " trong " + category : "" %>
+        <% if (search.q) { %>
+          Kết quả <%= modeLabel.toLocaleLowerCase("vi") %> cho “<%= search.q %>”<%= search.category ? " trong " + search.category : "" %>
         <% } else { %>
-          <%= category || "Thực đơn" %>
+          <%= search.category || "Thực đơn" %>
         <% } %>
       </h2>
       <p class="mt-1 text-[15px] text-stone-500">
-        <%= total %> món<% if (totalPages > 1) { %> · Trang <%= page %>/<%= totalPages %><% } %>
-        <% if (q || category) { %> · <a href="/dishes#thuc-don" class="font-semibold text-brand-700 hover:underline">Xóa bộ lọc</a><% } %>
+        <% if (searchErrors.length === 0) { %>
+          <span data-result-total><%= total %></span> món<% if (view === "pages" && totalPages > 1) { %> · Trang <%= page %>/<%= totalPages %><% } %>
+          <% if (view !== "pages" && dishes.length > 0) { %> · Đang hiện <span data-shown-count><%= dishes.length %></span><% } %>
+        <% } %>
+        <% if (filtered || searchErrors.length > 0) { %> · <a href="<%= clearHref %>" class="font-semibold text-brand-700 hover:underline">Xóa bộ lọc</a><% } %>
       </p>
     </div>
 
-    <form method="GET" action="/dishes#thuc-don" class="flex items-center gap-2">
-      <% if (category) { %><input type="hidden" name="category" value="<%= category %>"><% } %>
-      <% if (q) { %><input type="hidden" name="q" value="<%= q %>"><% } %>
-      <label for="sort" class="text-[15px] font-semibold text-stone-500">Sắp xếp theo</label>
-      <select id="sort" name="sort" onchange="this.form.submit()"
-              class="min-h-11 rounded-xl border border-[#EADBD2] bg-white py-2 pl-3 pr-8 text-[15px] font-semibold focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
-        <% Object.keys(sorts).forEach(function (key) { %>
-          <option value="<%= key %>" <%= key === sort ? "selected" : "" %>><%= sorts[key].label %></option>
+    <div class="flex flex-wrap items-center gap-3">
+      <nav class="inline-flex rounded-xl border border-[#EADBD2] bg-white p-1" aria-label="Kiểu phân trang">
+        <% Object.keys(views).forEach(function (v) { const active = v === view; %>
+          <a href="<%= viewHref(v) %>" <%- active ? 'aria-current="page"' : '' %>
+             class="flex min-h-10 items-center rounded-lg px-3 text-sm font-semibold transition sm:px-4 <%= active ? 'bg-ink text-white' : 'text-stone-600 hover:bg-brand-50 hover:text-brand-700' %>">
+            <%= views[v] %>
+          </a>
         <% }) %>
-      </select>
-      <noscript><button type="submit" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Áp dụng</button></noscript>
-    </form>
+      </nav>
+      <% if (ranked) { %>
+        <span class="text-[15px] font-semibold text-stone-500">Sắp xếp: Độ liên quan</span>
+      <% } else { %>
+        <form method="GET" action="/dishes#thuc-don" class="flex items-center gap-2">
+          <% if (search.mode !== "basic") { %><input type="hidden" name="mode" value="<%= search.mode %>"><% } %>
+          <% if (search.q) { %><input type="hidden" name="q" value="<%= search.q %>"><% } %>
+          <% if (search.category) { %><input type="hidden" name="category" value="<%= search.category %>"><% } %>
+          <% if (search.mode === "advanced") { ["minPrice", "maxPrice", "available", "ingredient"].forEach(function (k) { if (form[k]) { %>
+            <input type="hidden" name="<%= k %>" value="<%= form[k] %>">
+          <% } }) } %>
+          <% if (view !== "pages") { %><input type="hidden" name="view" value="<%= view %>"><% } %>
+          <label for="sort" class="text-[15px] font-semibold text-stone-500">Sắp xếp theo</label>
+          <select id="sort" name="sort" onchange="this.form.submit()"
+                  class="min-h-11 rounded-xl border border-[#EADBD2] bg-white py-2 pl-3 pr-8 text-[15px] font-semibold focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+            <% Object.keys(sorts).forEach(function (key) { %>
+              <option value="<%= key %>" <%= key === sort ? "selected" : "" %>><%= sorts[key].label %></option>
+            <% }) %>
+          </select>
+          <noscript><button type="submit" class="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Áp dụng</button></noscript>
+        </form>
+      <% } %>
+    </div>
   </div>
 
   <nav class="mb-6 flex flex-wrap gap-2" aria-label="Lọc theo danh mục">
-    <% [""].concat(categories).forEach(function (c) { const active = c === category; %>
-      <a href="<%= filterHref(c) %>#thuc-don" <%- active ? 'aria-current="page"' : '' %>
+    <% [""].concat(categories).forEach(function (c) { const active = c === search.category; %>
+      <a href="<%= categoryHref(c) %>" <%- active ? 'aria-current="page"' : '' %>
          class="flex min-h-11 items-center whitespace-nowrap rounded-full px-4 text-sm sm:px-5 sm:text-[15px] font-semibold transition <%= active ? 'bg-brand-600 text-white' : 'border border-[#EADBD2] bg-white hover:bg-brand-50 hover:text-brand-700' %>">
         <%= c || "Tất cả" %>
       </a>
     <% }) %>
   </nav>
 
-  <% if (dishes.length === 0) { %>
+  <% if (searchErrors.length > 0) { %>
+    <%- include("../partials/search-error", { errors: searchErrors, clearHref }) %>
+  <% } else if (dishes.length === 0) { %>
     <div class="rounded-3xl border border-dashed border-[#D9C3B7] bg-white p-12 text-center">
       <p class="text-lg font-bold">Chưa tìm thấy món phù hợp</p>
-      <p class="mt-1 text-stone-500">Thử từ khóa khác, hoặc <a href="/dishes#thuc-don" class="font-semibold text-brand-700 hover:underline">xem toàn bộ thực đơn</a>.</p>
+      <p class="mt-1 text-stone-500">Thử từ khóa hoặc kiểu tìm kiếm khác, hoặc <a href="<%= clearHref %>" class="font-semibold text-brand-700 hover:underline">xem toàn bộ thực đơn</a>.</p>
     </div>
   <% } else { %>
-    <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      <% dishes.forEach(function (d) { %>
-        <a href="/dishes/<%= d.id %>"
-           class="group flex flex-col overflow-hidden <%= card %> transition hover:-translate-y-1 hover:shadow-lg">
-          <div class="relative aspect-[4/3] overflow-hidden bg-brand-50">
-            <img src="<%= d.imageUrl || DEFAULT_DISH_IMAGE %>" alt="<%= d.name %>" loading="lazy"
-                 onerror="this.onerror=null;this.src='<%= DEFAULT_DISH_IMAGE %>'"
-                 class="h-full w-full object-cover transition duration-300 group-hover:scale-105 <%= d.available ? '' : 'grayscale' %>">
-            <% if (d.category) { %>
-              <span class="absolute left-3 top-3 rounded-full bg-white px-3 py-1 text-xs font-bold"><%= d.category %></span>
-            <% } %>
-          </div>
-          <div class="flex flex-1 flex-col gap-1.5 p-5">
-            <h3 class="text-lg font-bold leading-snug group-hover:text-brand-700"><%= d.name %></h3>
-            <% if (d.chef) { %>
-              <p class="text-sm text-stone-500">Đầu bếp <%= d.chef.name %></p>
-            <% } %>
-            <% if (d.description) { %>
-              <p class="line-clamp-2 text-sm text-stone-500"><%= d.description %></p>
-            <% } %>
-            <div class="mt-auto flex items-center justify-between gap-2 pt-3">
-              <span class="text-xl font-extrabold text-brand-700"><%= formatPrice(d.price) %></span>
-              <% if (d.available) { %>
-                <span class="rounded-full bg-[#E3EFE7] px-2.5 py-1 text-xs font-bold text-[#1E5233]">Còn món</span>
-              <% } else { %>
-                <span class="rounded-full bg-ink px-2.5 py-1 text-xs font-bold text-white">Tạm hết</span>
-              <% } %>
-            </div>
-          </div>
-        </a>
-      <% }) %>
+    <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-dish-grid>
+      <%- include("_cards", { dishes }) %>
     </div>
 
-    <%- include("../partials/pagination", { page, totalPages, pageHref }) %>
+    <% if (view === "pages") { %>
+      <%- include("../partials/pagination", { page, totalPages, pageHref }) %>
+    <% } else { %>
+      <%# Tải thêm / Cuộn vô hạn: script đọc trang tiếp theo qua GET /dishes/items và nối vào lưới.
+          Tải lại trang thì bắt đầu lại từ trang 1. Không có JavaScript: link sang kiểu Số trang. %>
+      <div class="mt-8 flex flex-col items-center gap-3" data-load-more
+           data-view="<%= view %>" data-total="<%= total %>" data-total-pages="<%= totalPages %>" data-next-page="2"
+           data-items-href="<%= itemsHref("") %>">
+        <p class="text-[15px] text-stone-500 <%= totalPages > 1 ? 'hidden' : '' %>" data-end>Đã hiện hết <%= total %> món.</p>
+        <p class="hidden text-[15px] text-red-700" data-error>Không tải được phần tiếp theo. <button type="button" class="font-semibold underline" data-retry>Thử lại</button></p>
+        <% if (totalPages > 1) { %>
+          <a href="<%= pageHref(2) %>" data-more-button
+             class="flex min-h-11 items-center rounded-xl border border-[#EADBD2] bg-white px-6 font-semibold hover:bg-brand-50 hover:text-brand-700"
+             <%- view === "scroll" ? 'data-scroll-fallback' : '' %>>
+            Tải thêm (<%= dishes.length %>/<%= total %>)
+          </a>
+          <p class="hidden text-[15px] text-stone-500" data-loading>Đang tải...</p>
+          <div data-sentinel aria-hidden="true" class="h-1 w-full"></div>
+        <% } %>
+      </div>
+      <script src="/js/load-more.js" defer></script>
+    <% } %>
   <% } %>
 </section>
 

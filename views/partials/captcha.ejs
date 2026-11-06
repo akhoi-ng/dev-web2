@@ -1,0 +1,12 @@
+<%#
+  Google reCAPTCHA v2 (checkbox). Chỉ có site key (công khai) ở trang; secret key nằm ở backend.
+  Widget tự thêm trường ẩn g-recaptcha-response vào form khi người dùng giải xong.
+  Biến: siteKey
+%>
+<div>
+  <p class="text-sm font-semibold">Xác minh <span class="text-red-500">*</span></p>
+  <div class="g-recaptcha mt-2" data-sitekey="<%= siteKey %>"></div>
+  <noscript><p class="mt-1 text-sm text-red-600">Cần bật JavaScript để hiện CAPTCHA.</p></noscript>
+  <p class="mt-1 text-xs text-stone-500">Mỗi lần xác nhận chỉ dùng được một lần và hết hạn sau 2 phút.</p>
+</div>
+<script src="https://www.google.com/recaptcha/api.js?hl=vi" async defer></script>

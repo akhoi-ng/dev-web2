@@ -25,6 +25,7 @@
 
     <div class="flex flex-wrap gap-3 px-6 py-4">
       <form method="POST" action="/admin/chefs/<%= chef.id %>?_method=DELETE">
+        <%- include("../../partials/csrf") %>
         <button type="submit" class="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700">Xác nhận xóa</button>
       </form>
       <a href="/admin/chefs" class="rounded-xl border border-stone-300 px-5 py-2.5 font-semibold hover:bg-stone-100">Hủy</a>

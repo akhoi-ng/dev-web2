@@ -5,6 +5,7 @@
 <%- include("../../partials/form-errors", { errors }) %>
 
 <form method="POST" action="<%= action %>" class="space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8">
+  <%- include("../../partials/csrf") %>
   <div>
     <label for="name" class="text-sm font-semibold">Họ tên đầu bếp <span class="text-red-500">*</span></label>
     <input id="name" name="name" type="text" value="<%= values.name %>" maxlength="100" class="<%= input %>" placeholder="VD: Nguyễn Văn Minh">

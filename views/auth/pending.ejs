@@ -1,0 +1,13 @@
+<%- include("../partials/header") %>
+
+<div class="mx-auto max-w-md">
+  <%- include("../partials/page-heading", { heading: "Tài khoản chưa kích hoạt" }) %>
+  <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-amber-200 sm:p-8" data-error-code="ACCOUNT_PENDING">
+    <p>Mật khẩu đúng nhưng tài khoản chưa được kích hoạt nên chưa thể đăng nhập.</p>
+    <p class="mt-2 text-stone-500">Nhập mã OTP đã gửi tới email, hoặc yêu cầu gửi lại mã.</p>
+    <a href="/activate?email=<%= encodeURIComponent(email) %>" class="mt-5 inline-flex rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Đến trang kích hoạt</a>
+    <p class="mt-3 text-xs text-stone-400">Mã lỗi: ACCOUNT_PENDING</p>
+  </div>
+</div>
+
+<%- include("../partials/footer") %>

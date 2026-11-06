@@ -1,0 +1,72 @@
+<%
+  // Form tìm kiếm món dùng chung cho thực đơn và trang quản lý (GET, không cần JavaScript).
+  // Biến nhận vào: action, form (giá trị đang áp dụng), modes, sort, view (tùy chọn), idPrefix
+  const id = function (name) { return idPrefix + "-" + name; };
+  const field = "min-h-11 w-full rounded-xl border border-[#EADBD2] bg-white px-3 py-2 text-[15px] focus:border-brand-500 focus:ring-2 focus:ring-brand-200";
+  const lbl = "mb-1 block text-sm font-semibold text-stone-500";
+%>
+<form method="GET" action="<%= action %>" role="search" class="flex flex-col gap-3 rounded-2xl border border-[#EADBD2] bg-white p-3" data-search-form>
+  <% if (form.category) { %><input type="hidden" name="category" value="<%= form.category %>"><% } %>
+  <% if (sort && sort !== "default") { %><input type="hidden" name="sort" value="<%= sort %>"><% } %>
+  <% if (locals.view && view !== "pages") { %><input type="hidden" name="view" value="<%= view %>"><% } %>
+  <div class="flex flex-wrap gap-2">
+    <label for="<%= id('q') %>" class="sr-only">Từ khóa</label>
+    <input id="<%= id('q') %>" type="search" name="q" value="<%= form.q %>" maxlength="100"
+           placeholder="<%= locals.placeholder || 'Tìm món: phở, bún chả, tiramisu…' %>"
+           class="min-h-12 min-w-0 flex-[1_1_220px] rounded-xl border-0 bg-cream px-3.5 text-base placeholder-stone-400 focus:ring-2 focus:ring-brand-200">
+    <label for="<%= id('mode') %>" class="sr-only">Kiểu tìm kiếm</label>
+    <select id="<%= id('mode') %>" name="mode" data-mode-select
+            class="min-h-12 rounded-xl border border-[#EADBD2] bg-white py-2 pl-3 pr-8 text-[15px] font-semibold focus:border-brand-500 focus:ring-2 focus:ring-brand-200">
+      <% Object.keys(modes).forEach(function (key) { %>
+        <option value="<%= key %>" <%= key === form.mode ? "selected" : "" %>><%= modes[key] %></option>
+      <% }) %>
+    </select>
+    <button type="submit" class="min-h-12 rounded-xl bg-brand-600 px-6 font-bold text-white hover:bg-brand-700">Tìm</button>
+  </div>
+
+  <!-- Tiêu chí nâng cao: luôn có trong HTML; script ẩn/hiện theo ô "Kiểu tìm kiếm".
+       Không có JavaScript thì vẫn hiện, server chỉ đọc chúng khi mode=advanced. -->
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-advanced>
+    <div>
+      <label for="<%= id('minPrice') %>" class="<%= lbl %>">Giá từ (đ)</label>
+      <input id="<%= id('minPrice') %>" name="minPrice" type="number" min="0" step="1000" inputmode="numeric" value="<%= form.minPrice %>" class="<%= field %>">
+    </div>
+    <div>
+      <label for="<%= id('maxPrice') %>" class="<%= lbl %>">Giá đến (đ)</label>
+      <input id="<%= id('maxPrice') %>" name="maxPrice" type="number" min="0" step="1000" inputmode="numeric" value="<%= form.maxPrice %>" class="<%= field %>">
+    </div>
+    <div>
+      <label for="<%= id('available') %>" class="<%= lbl %>">Tình trạng</label>
+      <select id="<%= id('available') %>" name="available" class="<%= field %>">
+        <option value="">Tất cả</option>
+        <option value="true" <%= form.available === "true" ? "selected" : "" %>>Còn món</option>
+        <option value="false" <%= form.available === "false" ? "selected" : "" %>>Tạm hết</option>
+      </select>
+    </div>
+    <div>
+      <label for="<%= id('ingredient') %>" class="<%= lbl %>">Nguyên liệu</label>
+      <input id="<%= id('ingredient') %>" name="ingredient" type="text" value="<%= form.ingredient %>" placeholder="tôm, nấm…" class="<%= field %>">
+    </div>
+  </div>
+</form>
+<script>
+  // Ẩn tiêu chí nâng cao khi không chọn "Nâng cao" (ô bị ẩn được disabled nên không lên URL);
+  // khi gửi, bỏ các ô để trống để URL gọn. Không có JavaScript form vẫn chạy bình thường.
+  (function () {
+    const form = document.currentScript.previousElementSibling;
+    const select = form.querySelector("[data-mode-select]");
+    const box = form.querySelector("[data-advanced]");
+    const sync = function () {
+      const on = select.value === "advanced";
+      box.classList.toggle("hidden", !on);
+      box.querySelectorAll("input, select").forEach(function (el) { el.disabled = !on; });
+    };
+    select.addEventListener("change", sync);
+    form.addEventListener("submit", function () {
+      form.querySelectorAll("input[name], select[name]").forEach(function (el) {
+        if (el.value.trim() === "" || (el.name === "mode" && el.value === "basic")) el.disabled = true;
+      });
+    });
+    sync();
+  })();
+</script>

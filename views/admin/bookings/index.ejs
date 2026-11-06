@@ -54,6 +54,7 @@
           <td class="rt-actions whitespace-nowrap px-4 py-3 text-right">
             <% (actions[b.status] || []).forEach(function (a) { %>
               <form method="POST" action="/admin/bookings/<%= b.id %>?_method=PATCH" class="inline">
+                <%- include("../../partials/csrf") %>
                 <input type="hidden" name="status" value="<%= a.to %>">
                 <button type="submit" class="rounded-lg px-3 py-1.5 font-semibold <%= a.cls %>"><%= a.label %></button>
               </form>

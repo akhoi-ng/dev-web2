@@ -1,13 +1,17 @@
 const express = require("express");
 const prisma = require("../../db/prisma");
-const { asyncHandler, parseId, paginate, isNotFoundError } = require("../../utils/helpers");
+const { findDishes } = require("../../db/dish-list");
+const { asyncHandler, parseId, isNotFoundError } = require("../../utils/helpers");
 const {
   DISH_CATEGORIES,
   DISH_SORTS,
+  SEARCH_MODES,
   parseDishSort,
+  parseDishSearch,
   validateDish,
   dishToValues,
 } = require("../../utils/validators");
+const { isRankedSearch, hrefWith, hasFilters, formValues } = require("../../utils/dish-query");
 
 const router = express.Router();
 const notFound = (res) => res.status(404).render("errors/404");
@@ -44,27 +48,36 @@ async function loadFormOptions() {
   return { chefs, ingredients };
 }
 
-// 1. GET /admin/dishes?sort=...&page=... — danh sách + sắp xếp + phân trang
+// 1. GET /admin/dishes?mode&q&...&sort&page — bảng món + tìm kiếm 4 mode + sắp xếp + phân trang số trang
 router.get(
   "/",
   asyncHandler(async (req, res) => {
+    const { fields, search } = parseDishSearch(req.query);
     const sort = parseDishSort(req.query.sort);
-    const total = await prisma.dish.count();
-    const { page, totalPages, skip, take } = paginate(total, req.query.page, PAGE_SIZE);
-    const dishes = await prisma.dish.findMany({
-      orderBy: DISH_SORTS[sort].orderBy,
-      include: { chef: true, _count: { select: { ingredients: true } } },
-      skip,
-      take,
-    });
+    const searchErrors = Object.values(fields);
+    const result =
+      searchErrors.length > 0
+        ? { dishes: [], total: 0, page: 1, totalPages: 1 }
+        : await findDishes({
+            search,
+            sort,
+            rawPage: req.query.page,
+            pageSize: PAGE_SIZE,
+            include: { chef: true, _count: { select: { ingredients: true } } },
+          });
     res.render("admin/dishes/index", {
       title: "Quản lý món ăn",
-      dishes,
-      total,
-      page,
-      totalPages,
+      ...result,
+      search,
       sort,
+      searchErrors,
+      form: formValues(req.query, search),
+      ranked: isRankedSearch(search),
+      filtered: hasFilters(search),
       sorts: DISH_SORTS,
+      modes: SEARCH_MODES,
+      // Giữ tiêu chí + sắp xếp khi chuyển trang; trang 1 không ghi lên URL
+      pageHref: (p) => hrefWith("/admin/dishes", search, sort, { page: p > 1 ? p : "" }),
     });
   })
 );

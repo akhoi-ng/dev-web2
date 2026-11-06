@@ -1,6 +1,8 @@
 <%
   const path = locals.currentPath || "";
   const isAdmin = path.startsWith("/admin");
+  // Link "Quản trị" chỉ hiện cho khách (dẫn tới đăng nhập) và tài khoản admin
+  const canAdmin = !locals.currentUser || currentUser.role === "admin";
   const adminLinks = [
     { href: "/admin/dishes", label: "Món ăn" },
     { href: "/admin/chefs", label: "Đầu bếp" },
@@ -81,7 +83,20 @@
             <a href="/bookings/new" class="flex min-h-11 items-center rounded-xl px-3 hover:bg-brand-50 hover:text-brand-700">Đặt bàn</a>
             <div class="my-2 border-t border-stone-100"></div>
             <a href="/dishes" class="flex min-h-11 items-center rounded-xl px-3 <%= isAdmin ? 'text-stone-500 hover:bg-stone-50' : 'bg-stone-100' %>">Trang khách hàng</a>
-            <a href="/admin/dishes" class="flex min-h-11 items-center rounded-xl px-3 <%= isAdmin ? 'bg-stone-100' : 'text-stone-500 hover:bg-stone-50' %>">Trang quản trị</a>
+            <% if (canAdmin) { %>
+              <a href="/admin/dishes" class="flex min-h-11 items-center rounded-xl px-3 <%= isAdmin ? 'bg-stone-100' : 'text-stone-500 hover:bg-stone-50' %>">Trang quản trị</a>
+            <% } %>
+            <div class="my-2 border-t border-stone-100"></div>
+            <% if (locals.currentUser) { %>
+              <span class="truncate px-3 py-1 text-xs text-stone-500"><%= currentUser.email %></span>
+              <form method="POST" action="/logout">
+                <%- include("csrf") %>
+                <button type="submit" class="flex min-h-11 w-full items-center rounded-xl px-3 text-left hover:bg-brand-50 hover:text-brand-700">Đăng xuất</button>
+              </form>
+            <% } else { %>
+              <a href="/login" class="flex min-h-11 items-center rounded-xl px-3 hover:bg-brand-50 hover:text-brand-700">Đăng nhập</a>
+              <a href="/register" class="flex min-h-11 items-center rounded-xl px-3 hover:bg-brand-50 hover:text-brand-700">Đăng ký</a>
+            <% } %>
           </nav>
         </details>
       </div>
@@ -95,6 +110,7 @@
           <a href="/bookings/new" class="rounded-full bg-brand-600 px-5 py-2.5 text-[15px] font-bold text-white hover:bg-brand-700">Đặt bàn</a>
         <% } %>
 
+        <% if (canAdmin) { %>
         <!-- Chuyển nhanh giữa trang khách và trang quản trị -->
         <div class="flex rounded-full bg-stone-100 p-1 text-sm font-medium">
           <a href="/dishes"
@@ -106,6 +122,18 @@
             Quản trị
           </a>
         </div>
+        <% } %>
+
+        <!-- Tài khoản: đăng xuất là form POST (không phải link GET), kèm CSRF token -->
+        <% if (locals.currentUser) { %>
+          <span class="max-w-48 truncate text-sm text-stone-500" title="<%= currentUser.email %>"><%= currentUser.email %></span>
+          <form method="POST" action="/logout">
+            <%- include("csrf") %>
+            <button type="submit" class="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-semibold hover:bg-stone-100">Đăng xuất</button>
+          </form>
+        <% } else { %>
+          <a href="/login" class="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-semibold hover:bg-stone-100">Đăng nhập</a>
+        <% } %>
       </div>
     </div>
 

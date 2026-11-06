@@ -1,0 +1,13 @@
+<%- include("../partials/header", { title: "Thao tác quá nhanh" }) %>
+
+<div class="mx-auto max-w-lg py-16 text-center" data-error-code="RATE_LIMITED">
+  <p class="text-7xl font-extrabold text-brand-600">429</p>
+  <h1 class="mt-4 text-2xl font-bold"><%= message %></h1>
+  <p class="mt-2 text-stone-500">Vui lòng thử lại sau khoảng <%= retryAfterMin %> phút.</p>
+  <p class="mt-2 text-xs text-stone-400">Mã lỗi: RATE_LIMITED</p>
+  <div class="mt-8 flex flex-wrap justify-center gap-3">
+    <a href="/dishes" class="rounded-xl bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700">Về thực đơn</a>
+  </div>
+</div>
+
+<%- include("../partials/footer") %>

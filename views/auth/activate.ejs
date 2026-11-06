@@ -1,0 +1,33 @@
+<%- include("../partials/header") %>
+<% const input = "mt-1 w-full rounded-xl border border-stone-300 px-4 py-2.5 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"; %>
+
+<div class="mx-auto max-w-md">
+  <%- include("../partials/page-heading", { heading: "Kích hoạt tài khoản", subheading: "Nhập mã OTP " + policy.otp.digits + " chữ số đã gửi tới email của bạn." }) %>
+  <%- include("../partials/auth-alert", { errors, code, notice }) %>
+
+  <form method="POST" action="/activate" class="space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8">
+    <%- include("../partials/csrf") %>
+    <div>
+      <label for="email" class="text-sm font-semibold">Email <span class="text-red-500">*</span></label>
+      <input id="email" name="email" type="email" value="<%= email %>" maxlength="254" autocomplete="email" required class="<%= input %>">
+    </div>
+    <div>
+      <label for="otp" class="text-sm font-semibold">Mã OTP <span class="text-red-500">*</span></label>
+      <input id="otp" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="<%= policy.otp.digits %>" required
+             class="<%= input %> text-center text-2xl font-bold tracking-[0.5em]" placeholder="••••••">
+      <p class="mt-1 text-xs text-stone-500">Mã có hạn <%= Math.round(policy.otp.ttlMs / 60000) %> phút. Sai <%= policy.otp.maxAttempts %> lần thì tạm khóa <%= Math.round(policy.otp.lockMs / 60000) %> phút.</p>
+    </div>
+    <button type="submit" class="w-full rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white hover:bg-brand-700">Kích hoạt</button>
+  </form>
+
+  <form method="POST" action="/activate/resend" class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 text-sm shadow-sm ring-1 ring-stone-200">
+    <%- include("../partials/csrf") %>
+    <label for="resend-email" class="sr-only">Email nhận lại mã</label>
+    <input id="resend-email" name="email" type="email" value="<%= email %>" maxlength="254" required placeholder="Email đã đăng ký"
+           class="min-w-0 flex-1 rounded-xl border border-stone-300 px-3 py-2 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200">
+    <button type="submit" class="rounded-xl border border-stone-300 px-4 py-2 font-semibold hover:bg-stone-100">Gửi lại mã</button>
+    <p class="w-full text-xs text-stone-500">Gửi lại cách nhau tối thiểu <%= Math.round(policy.otp.resendCooldownMs / 1000) %> giây. Mã mới thay mã cũ.</p>
+  </form>
+</div>
+
+<%- include("../partials/footer") %>

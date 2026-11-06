@@ -1,0 +1,33 @@
+<%- include("../partials/header") %>
+<% const input = "mt-1 w-full rounded-xl border border-stone-300 px-4 py-2.5 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"; %>
+
+<div class="mx-auto max-w-md">
+  <%- include("../partials/page-heading", { heading: "Đặt mật khẩu mới" }) %>
+
+  <% if (!token) { %>
+    <%# Token sai, hết hạn hoặc đã dùng: cùng một thông báo %>
+    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-red-200 sm:p-8" data-error-code="INVALID_TOKEN">
+      <p class="font-semibold">Link đặt lại mật khẩu không dùng được.</p>
+      <p class="mt-2 text-stone-500">Link có thể đã hết hạn hoặc đã được dùng. Hãy yêu cầu link mới.</p>
+      <a href="/forgot" class="mt-5 inline-flex rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Yêu cầu link mới</a>
+      <p class="mt-3 text-xs text-stone-400">Mã lỗi: INVALID_TOKEN</p>
+    </div>
+  <% } else { %>
+    <%- include("../partials/auth-alert", { errors, code }) %>
+    <form method="POST" action="/reset" class="space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8">
+      <%- include("../partials/csrf") %>
+      <input type="hidden" name="token" value="<%= token %>">
+      <div>
+        <label for="password" class="text-sm font-semibold">Mật khẩu mới</label>
+        <input id="password" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required class="<%= input %>">
+      </div>
+      <div>
+        <label for="confirm" class="text-sm font-semibold">Nhập lại mật khẩu mới</label>
+        <input id="confirm" name="confirm" type="password" maxlength="128" autocomplete="new-password" required class="<%= input %>">
+      </div>
+      <button type="submit" class="w-full rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white hover:bg-brand-700">Đổi mật khẩu</button>
+    </form>
+  <% } %>
+</div>
+
+<%- include("../partials/footer") %>

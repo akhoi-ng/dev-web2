@@ -41,7 +41,8 @@ const asyncHandler = (fn) => (req, res, next) =>
 // Ép kiểu id từ URL; trả về null nếu không phải số nguyên dương.
 function parseId(raw) {
   const id = Number(raw);
-  if (!Number.isInteger(id) || id <= 0) return null;
+  // Cột id là INT4: số lớn hơn giới hạn không thể có bản ghi, và đưa vào Prisma sẽ gây lỗi 500
+  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return null;
   return id;
 }
 
@@ -56,6 +57,12 @@ function paginate(total, rawPage, pageSize) {
 // Lấy giá trị chuỗi an toàn từ req.body / req.query (có thể là mảng hoặc undefined).
 function str(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+// Prisma `contains` không escape ký tự đại diện của LIKE: thêm "\" trước \ % _ để chúng
+// được so khớp như ký tự thường (PostgreSQL dùng "\" làm ký tự escape mặc định của LIKE).
+function escapeLike(text) {
+  return text.replace(/[\\%_]/g, "\\$&");
 }
 
 function formatPrice(value) {
@@ -92,6 +99,7 @@ module.exports = {
   parseId,
   paginate,
   str,
+  escapeLike,
   formatPrice,
   formatQty,
   isHttpUrl,
