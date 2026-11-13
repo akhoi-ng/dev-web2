@@ -20,12 +20,36 @@ const footHeading = "mb-2 text-sm font-bold uppercase tracking-wider text-white"
 
 // Khu tài khoản trên header. Ẩn/hiện theo trạng thái đăng nhập chỉ là giao diện: quyền do API quyết định.
 function AccountArea({ compact = false }) {
-  const { status, user, logout } = useAuth();
+  const { status, user, logout, logoutAll } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const menuRef = useRef(null);
+
+  // Menu tài khoản (desktop) đóng khi chuyển trang hoặc bấm ra ngoài
+  useEffect(() => {
+    if (menuRef.current) menuRef.current.open = false;
+  }, [pathname]);
+  useEffect(() => {
+    function onDocClick(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) menuRef.current.open = false;
+    }
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, []);
 
   async function onLogout() {
     await logout();
     navigate("/login", { replace: true });
+  }
+
+  async function onLogoutAll() {
+    if (!window.confirm("Đăng xuất tài khoản khỏi mọi thiết bị và trình duyệt?")) return;
+    try {
+      await logoutAll();
+      navigate("/login", { replace: true });
+    } catch {
+      window.alert("Chưa đăng xuất được mọi nơi do lỗi kết nối. Vui lòng thử lại.");
+    }
   }
 
   if (status === "loading") return null;
@@ -42,16 +66,21 @@ function AccountArea({ compact = false }) {
       <>
         <span className="truncate px-3 pt-1 text-xs font-medium text-stone-500" title={name}>{name}</span>
         <button type="button" onClick={onLogout} className={mobileLink + " text-left"}>Đăng xuất</button>
+        <button type="button" onClick={onLogoutAll} className={mobileLink + " text-left text-brand-700"}>Đăng xuất mọi nơi</button>
       </>
     );
   }
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="max-w-[180px] truncate font-medium text-stone-600" title={name}>{name}</span>
-      <button type="button" onClick={onLogout} className="rounded-full border border-[#D9C3B7] px-4 py-2 font-bold hover:bg-brand-50">
-        Đăng xuất
-      </button>
-    </div>
+    <details className="relative text-sm" ref={menuRef}>
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-[#D9C3B7] px-4 py-2 font-bold hover:bg-brand-50">
+        <span className="max-w-[180px] truncate" title={name}>{name}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+      </summary>
+      <div className="absolute right-0 top-full z-30 mt-2 flex w-56 flex-col rounded-2xl border border-[#EADBD2] bg-white p-2 font-semibold shadow-lg">
+        <button type="button" onClick={onLogout} className="flex min-h-10 items-center rounded-xl px-3 text-left hover:bg-brand-50">Đăng xuất</button>
+        <button type="button" onClick={onLogoutAll} className="flex min-h-10 items-center rounded-xl px-3 text-left text-brand-700 hover:bg-brand-50">Đăng xuất mọi nơi</button>
+      </div>
+    </details>
   );
 }
 

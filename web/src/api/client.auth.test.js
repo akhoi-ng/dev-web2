@@ -72,9 +72,13 @@ test("401 TOKEN_EXPIRED: refresh một lần rồi gửi lại với token mới
   assert.equal(auth.calls.unauth, 0);
 });
 
-test("401 và refresh thất bại: xóa token (onUnauthenticated), ném ApiError 401 có code", async () => {
+test("401 và refresh thất bại: ném ApiError 401 có code; việc kết thúc phiên do session quyết định", async () => {
   const auth = fakeAuth({ refreshResult: false });
-  const client = createClient(BASE, async () => json({ ok: false, error: { code: "UNAUTHENTICATED", message: "m" } }, 401), auth);
+  let calls = 0;
+  const client = createClient(BASE, async () => {
+    calls++;
+    return json({ ok: false, error: { code: "UNAUTHENTICATED", message: "m" } }, 401);
+  }, auth);
   await assert.rejects(client.request("DELETE", "/api/dishes/1"), (err) => {
     assert.ok(err instanceof ApiError);
     assert.equal(err.kind, "http");
@@ -82,8 +86,17 @@ test("401 và refresh thất bại: xóa token (onUnauthenticated), ném ApiErro
     assert.equal(err.code, "UNAUTHENTICATED");
     return true;
   });
+  assert.equal(calls, 1, "không gửi lại khi refresh thất bại");
+  assert.equal(auth.calls.refresh, 1);
+  assert.equal(auth.calls.unauth, 0);
+});
+
+test("refresh thành công nhưng request gửi lại vẫn 401: kết thúc phiên (onUnauthenticated)", async () => {
+  const auth = fakeAuth();
+  const client = createClient(BASE, async () => json({ ok: false, error: { code: "UNAUTHENTICATED" } }, 401), auth);
+  await assert.rejects(client.request("GET", "/api/chefs"), (err) => err.status === 401);
+  assert.equal(auth.calls.refresh, 1);
   assert.equal(auth.calls.unauth, 1);
-  assert.equal(auth.getToken(), null);
 });
 
 test("403: không refresh, không xóa token", async () => {

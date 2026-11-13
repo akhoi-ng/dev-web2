@@ -8,7 +8,8 @@
 //   POST /api/auth/login             { email, password, captcha? }  -> accessToken + cookie rt
 //   POST /api/auth/refresh           cookie rt                       -> accessToken mới + rt mới
 //   POST /api/auth/logout            cookie rt                       -> thu hồi family của rt
-//   POST /api/auth/logout-all        Bearer                          -> tokenVersion + 1, thu hồi mọi rt
+//   POST /api/auth/logout-all        Bearer                          -> tokenVersion + 1, thu hồi mọi rt,
+//                                                                       xóa session của bản SSR
 //   GET  /api/auth/me                Bearer                          -> user (role đọc từ DB)
 //   POST /api/auth/forgot            { email }
 //   POST /api/auth/reset             { token, password, confirm? }
@@ -256,7 +257,8 @@ router.post(
   })
 );
 
-// Đăng xuất mọi nơi: tăng tokenVersion -> mọi access token đã cấp bị từ chối ngay ở request sau
+// Đăng xuất mọi nơi: tăng tokenVersion -> mọi access token đã cấp bị từ chối ngay ở request sau;
+// thu hồi mọi refresh token; xóa session của bản SSR (hai bản dùng chung tài khoản)
 router.post(
   "/logout-all",
   requireAuth,
@@ -265,6 +267,7 @@ router.post(
     await prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: req.user.id }, data: { tokenVersion: { increment: 1 } } });
       await tokens.revokeAllForUser(req.user.id, now, tx);
+      await tx.session.deleteMany({ where: { userId: req.user.id } });
     });
     clearRefreshCookie(res);
     ok(res, { loggedOut: true });

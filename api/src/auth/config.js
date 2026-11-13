@@ -11,7 +11,7 @@ const POLICY = {
 
   // Access token (JWT HS256) gửi trong header Authorization: Bearer <token>
   accessToken: {
-    ttlSec: 15 * 60, // 900 giây
+    ttlSec: 15 * 60, // 900 giây; đổi bằng ACCESS_TOKEN_TTL_SEC (xem accessTokenTtlSec)
     algorithm: "HS256",
     issuer: "lua-hong-api",
     audience: "lua-hong-web",
@@ -103,6 +103,18 @@ function recaptchaConfig() {
   };
 }
 
+// Thời hạn access token (giây). ACCESS_TOKEN_TTL_SEC dùng để thử hết hạn nhanh, ví dụ 60;
+// không đặt thì dùng chính sách công bố 900 giây.
+function accessTokenTtlSec() {
+  const raw = process.env.ACCESS_TOKEN_TTL_SEC;
+  if (raw === undefined || raw === "") return POLICY.accessToken.ttlSec;
+  const sec = Number(raw);
+  if (!Number.isInteger(sec) || sec < 10 || sec > 86400) {
+    throw new Error("ACCESS_TOKEN_TTL_SEC phải là số nguyên giây trong khoảng 10 đến 86400");
+  }
+  return sec;
+}
+
 function requireSecret(name) {
   const value = process.env[name];
   if (!value || value.length < 32) throw new Error(`Thiếu ${name} (ít nhất 32 ký tự) trong api/.env`);
@@ -119,6 +131,7 @@ const jwtSecret = () => requireSecret("JWT_SECRET");
 function checkAuthConfig() {
   secret();
   jwtSecret();
+  accessTokenTtlSec();
   if (process.env.JWT_SECRET === process.env.SESSION_SECRET) {
     throw new Error("JWT_SECRET phải khác SESSION_SECRET");
   }
@@ -136,6 +149,7 @@ module.exports = {
   webUrl,
   corsOrigins,
   recaptchaConfig,
+  accessTokenTtlSec,
   secret,
   jwtSecret,
   checkAuthConfig,

@@ -14,7 +14,10 @@
 const HINT_KEY = "lua-hong:signed-in";
 const LOCK_NAME = "lua-hong:refresh";
 const CHANNEL = "lua-hong:auth";
-const EARLY_REFRESH_SEC = 60; // làm mới trước khi hết hạn 60 giây
+// Làm mới trước khi hết hạn: 60 giây, hoặc 1/5 thời hạn nếu token sống ngắn
+// (900 giây -> làm mới ở giây 840; 60 giây -> ở giây 48)
+const earlyRefreshSec = (expiresIn) => Math.min(60, expiresIn / 5);
+const RETRY_MS = 15 * 1000; // làm mới thất bại do lỗi kỹ thuật: thử lại sau 15 giây
 
 function safeStorage(storage) {
   return {
@@ -60,6 +63,9 @@ export function createSession({
   const listeners = new Set();
 
   let accessToken = null;
+  // Đã đăng nhập ở tab này. Tách khỏi accessToken: lúc token đang được làm mới hay vừa hết hạn,
+  // người dùng vẫn đang đăng nhập; chỉ khi refresh token hết hiệu lực mới kết thúc phiên.
+  let signedIn = false;
   let timer = null;
   let inflight = null;
 
@@ -67,18 +73,29 @@ export function createSession({
     for (const fn of listeners) fn(event);
   }
 
-  function schedule(expiresIn) {
+  function stopTimer() {
     if (timer) clearTimer(timer);
-    const ms = Math.max(5, Number(expiresIn) - EARLY_REFRESH_SEC) * 1000;
-    timer = setTimer(() => {
-      refresh().then((ok) => {
-        if (!ok) expire();
-      });
-    }, ms);
+    timer = null;
+  }
+
+  function schedule(expiresIn) {
+    stopTimer();
+    const sec = Number(expiresIn);
+    timer = setTimer(onTimer, Math.max(5, sec - earlyRefreshSec(sec)) * 1000);
+  }
+
+  // Hẹn giờ tới: làm mới. Hết phiên ("invalid") do refresh() xử lý. Lỗi mạng, 429, 5xx là lỗi kỹ
+  // thuật: giữ phiên, thử lại sau RETRY_MS (request gặp 401 trong lúc đó cũng tự thử refresh).
+  function onTimer() {
+    timer = null;
+    refresh().then((ok) => {
+      if (!ok && signedIn && !timer) timer = setTimer(onTimer, RETRY_MS);
+    });
   }
 
   function set({ accessToken: token, expiresIn }) {
     accessToken = token;
+    signedIn = true;
     hint.set(HINT_KEY, "1");
     schedule(expiresIn);
     emit("token");
@@ -86,16 +103,21 @@ export function createSession({
 
   function clearLocal() {
     accessToken = null;
-    if (timer) clearTimer(timer);
-    timer = null;
+    signedIn = false;
+    stopTimer();
     hint.remove(HINT_KEY);
   }
 
-  // Phiên không còn dùng được (refresh thất bại, 401): xóa token, báo cho giao diện về /login
-  function expire() {
-    const had = accessToken !== null;
+  // Kết thúc phiên ở tab này; chỉ báo giao diện nếu tab đang đăng nhập
+  function end(event) {
+    const was = signedIn;
     clearLocal();
-    if (had) emit("expired");
+    if (was) emit(event);
+  }
+
+  // Phiên không còn dùng được (API vẫn 401 với token vừa làm mới): xóa token, giao diện về /login
+  function expire() {
+    end("expired");
   }
 
   async function callRefresh() {
@@ -128,6 +150,8 @@ export function createSession({
    * Làm mới access token -> true | false. Một lần gọi tại một thời điểm trong tab (các request cùng
    * gặp 401 chờ chung một Promise) và giữa các tab (Web Locks): refresh token xoay vòng, nếu hai tab
    * gửi cùng một cookie cũ thì API coi là dùng lại và thu hồi cả phiên.
+   *  - "invalid" (API trả 401): kết thúc phiên, phát "expired" nếu tab đang đăng nhập
+   *  - lỗi mạng, 429, 5xx: trả false nhưng GIỮ phiên và token hiện có
    */
   function refresh() {
     if (!inflight) {
@@ -135,7 +159,7 @@ export function createSession({
       const job = locks && typeof locks.request === "function" ? locks.request(LOCK_NAME, run) : run();
       inflight = job
         .then((result) => {
-          if (result === "invalid") clearLocal();
+          if (result === "invalid") end("expired");
           return result === "ok";
         })
         .finally(() => {

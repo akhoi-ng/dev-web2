@@ -1,4 +1,7 @@
 # Thử API bằng REST Client (VS Code). Chạy API trước: npm run dev
+# Block 9: các request ghi món ăn, mọi request /api/chefs, /api/ingredients, /api/admin/bookings cần
+# header "Authorization: Bearer <accessToken>" (lấy từ POST /api/auth/login, xem requests-auth.http),
+# thiếu thì nhận 401.
 @api = http://localhost:3000
 @origin = http://localhost:5173
 

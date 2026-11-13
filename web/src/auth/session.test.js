@@ -103,3 +103,79 @@ test("expire phát expired khi đang có token; logout gọi /api/auth/logout v�
   assert.deepEqual(events, ["token", "expired", "logout"]);
   assert.deepEqual(urls, ["http://api/api/auth/logout"]);
 });
+
+test("hẹn giờ làm mới: 900 giây -> giây 840; 60 giây -> giây 48", () => {
+  const delays = [];
+  const s = createSession({ ...base, storage: memoryStorage(), fetchImpl: async () => json({}), setTimer: (fn, ms) => delays.push(ms) });
+  s.set({ accessToken: "a", expiresIn: 900 });
+  s.set({ accessToken: "b", expiresIn: 60 });
+  assert.deepEqual(delays, [840000, 48000]);
+});
+
+test("đang đăng nhập, refresh nhận 401: kết thúc phiên và phát expired (giao diện về /login)", async () => {
+  const events = [];
+  const storage = memoryStorage();
+  const s = createSession({ ...base, storage, fetchImpl: async () => json({ ok: false, error: { code: "UNAUTHENTICATED" } }, 401) });
+  s.subscribe((e) => events.push(e));
+  s.set({ accessToken: "a", expiresIn: 900 });
+  assert.equal(await s.refresh(), false);
+  assert.equal(s.getToken(), null);
+  assert.equal(storage.getItem("lua-hong:signed-in"), null);
+  assert.deepEqual(events, ["token", "expired"]);
+});
+
+test("chưa đăng nhập, refresh nhận 401: không phát expired", async () => {
+  const events = [];
+  const s = createSession({ ...base, storage: memoryStorage(), fetchImpl: async () => json({ ok: false }, 401) });
+  s.subscribe((e) => events.push(e));
+  assert.equal(await s.refresh(), false);
+  assert.deepEqual(events, []);
+});
+
+test("hẹn giờ refresh gặp lỗi mạng: giữ phiên và token, hẹn thử lại sau 15 giây", async () => {
+  const events = [];
+  const timers = [];
+  let fail = true;
+  const s = createSession({
+    ...base,
+    storage: memoryStorage(),
+    setTimer: (fn, ms) => {
+      timers.push({ fn, ms });
+      return timers.length;
+    },
+    fetchImpl: async () => {
+      if (fail) throw new TypeError("Failed to fetch");
+      return json({ ok: true, data: { accessToken: "moi", expiresIn: 900 } });
+    },
+  });
+  s.subscribe((e) => events.push(e));
+  s.set({ accessToken: "cu", expiresIn: 900 });
+  timers[0].fn(); // tới giờ làm mới, mạng hỏng
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(s.getToken(), "cu");
+  assert.deepEqual(events, ["token"]);
+  assert.equal(timers[1].ms, 15000);
+
+  fail = false;
+  timers[1].fn(); // thử lại khi mạng đã có
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(s.getToken(), "moi");
+  assert.deepEqual(events, ["token", "token"]);
+});
+
+test("hẹn giờ refresh gặp 500: không đăng xuất", async () => {
+  const events = [];
+  const timers = [];
+  const s = createSession({
+    ...base,
+    storage: memoryStorage(),
+    setTimer: (fn, ms) => timers.push({ fn, ms }),
+    fetchImpl: async () => json({ message: "Lỗi hệ thống" }, 500),
+  });
+  s.subscribe((e) => events.push(e));
+  s.set({ accessToken: "cu", expiresIn: 900 });
+  timers[0].fn();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(s.getToken(), "cu");
+  assert.ok(!events.includes("expired"));
+});

@@ -40,6 +40,19 @@ test("access token: payload chỉ có sub, ver, jti, iat, exp, iss, aud; header 
   assert.equal("role" in payload, false);
 });
 
+test("ACCESS_TOKEN_TTL_SEC đổi thời hạn; giá trị sai bị từ chối", (t) => {
+  t.after(() => delete process.env.ACCESS_TOKEN_TTL_SEC);
+  process.env.ACCESS_TOKEN_TTL_SEC = "60";
+  const { accessToken, expiresIn } = signAccessToken(USER);
+  const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url"));
+  assert.equal(expiresIn, 60);
+  assert.equal(payload.exp - payload.iat, 60);
+  for (const bad of ["abc", "5", "1.5", "999999"]) {
+    process.env.ACCESS_TOKEN_TTL_SEC = bad;
+    assert.throws(() => signAccessToken(USER), /ACCESS_TOKEN_TTL_SEC/);
+  }
+});
+
 test("verify: token hợp lệ -> userId, ver", () => {
   const { accessToken } = signAccessToken(USER);
   const r = verifyAccessToken(accessToken);

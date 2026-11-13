@@ -274,7 +274,8 @@ async function jwtAndCrud(account) {
   section("JWT và API (bảng nghiệm thu 1)");
   const jar = new Map();
   const { r, token } = await login(account, jar);
-  check("login -> { accessToken, expiresIn: 900 }", Boolean(token) && r.json.data.expiresIn === 900, r.text);
+  const ttl = Number(process.env.ACCESS_TOKEN_TTL_SEC) || 900;
+  check(`login -> { accessToken, expiresIn: ${ttl} }`, Boolean(token) && r.json.data.expiresIn === ttl, r.text);
   const rtCookie = r.setCookies.find((c) => c.startsWith("rt=")) || "";
   check("refresh token trong cookie HttpOnly, SameSite=Strict, Path=/api/auth", /HttpOnly/i.test(rtCookie) && /SameSite=Strict/i.test(rtCookie) && /Path=\/api\/auth/i.test(rtCookie), rtCookie.replace(/rt=[^;]+/, "rt=***"));
   check("refresh token không nằm trong body JSON", !r.text.includes(jar.get("rt")));
@@ -393,8 +394,13 @@ async function refreshTokens(account) {
   // Logout mọi nơi: tokenVersion
   const s3 = await login(account);
   const s4 = await login(account);
+  // Giả lập một phiên đang mở ở bản SSR của cùng tài khoản
+  const owner = await prisma.user.findUnique({ where: { email: account.email } });
+  const inAnHour = new Date(Date.now() + 3600 * 1000);
+  await prisma.session.create({ data: { sidHash: sha256(`ssr-${RUN}`), userId: owner.id, expiresAt: inAnHour, absoluteExpiresAt: inAnHour } });
   r = await call("POST", "/api/auth/logout-all", { token: s3.token, jar: s3.jar, body: {} });
   check("logout-all -> ok", r.json?.ok === true, r.text);
+  check("logout-all: xóa cả session của bản SSR", (await prisma.session.count({ where: { userId: owner.id } })) === 0);
   r = await call("GET", "/api/auth/me", { token: s4.token });
   check("logout-all: access token của thiết bị khác -> 401 ngay (tokenVersion)", r.status === 401 && code(r) === "UNAUTHENTICATED");
   r = await call("POST", "/api/auth/refresh", { jar: s4.jar, body: {} });

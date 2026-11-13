@@ -4,7 +4,7 @@
 //  - Chỉ gắn cho đường dẫn tương đối "/api/..." của API mình; URL tuyệt đối (domain khác) bị từ chối,
 //    nên token không bao giờ đi tới bên thứ ba.
 //  - 401: thử làm mới access token một lần bằng refresh token (cookie HttpOnly), thành công thì gửi
-//    lại request; thất bại thì báo auth.onUnauthenticated() (xóa token, về trang đăng nhập).
+//    lại request. Refresh token hết hiệu lực thì phiên kết thúc (xóa token, về trang đăng nhập).
 //  - 403: báo không đủ quyền, GIỮ token.
 //  - Lỗi mạng, 500: lỗi kỹ thuật, không bị hiểu thành đã đăng xuất.
 
@@ -39,8 +39,9 @@ function isOwnApiPath(path) {
 /*
  * auth (tuỳ chọn):
  *   getToken()            -> access token hiện tại hoặc null
- *   refresh()             -> Promise<boolean>: làm mới access token bằng cookie refresh
- *   onUnauthenticated()   -> gọi khi 401 không cứu được (xóa token, chuyển về đăng nhập)
+ *   refresh()             -> Promise<boolean>: làm mới access token bằng cookie refresh; tự kết
+ *                            thúc phiên khi refresh token hết hiệu lực
+ *   onUnauthenticated()   -> gọi khi token vừa làm mới vẫn bị 401 (xóa token, về đăng nhập)
  */
 export function createClient(baseUrl, fetchImpl = globalThis.fetch, auth = null) {
   async function send(method, path, { query, body, signal, credentials, anonymous }) {
@@ -77,13 +78,15 @@ export function createClient(baseUrl, fetchImpl = globalThis.fetch, auth = null)
 
     let { res, payload } = await send(method, path, options);
 
-    // 401 ở route cần đăng nhập: làm mới một lần rồi thử lại
+    // 401 ở route cần đăng nhập: làm mới một lần rồi gửi lại.
+    //  - refresh thất bại: auth.refresh() tự xử lý (refresh token hết hiệu lực -> kết thúc phiên;
+    //    lỗi mạng -> giữ phiên), ở đây chỉ ném lỗi 401 cho trang hiển thị
+    //  - token vừa làm mới vẫn bị 401 (tài khoản bị khóa, tokenVersion đổi): kết thúc phiên
     if (res.status === 401 && auth && !options.anonymous && !options.noRefresh) {
-      const refreshed = await auth.refresh();
-      if (refreshed) {
+      if (await auth.refresh()) {
         ({ res, payload } = await send(method, path, options));
+        if (res.status === 401) auth.onUnauthenticated();
       }
-      if (res.status === 401) auth.onUnauthenticated();
     }
 
     const error = payload && typeof payload === "object" && payload.error ? payload.error : null;

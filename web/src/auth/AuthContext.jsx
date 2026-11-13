@@ -58,12 +58,11 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => session.logout(), []);
 
+  // Đăng xuất mọi nơi: API tăng tokenVersion, thu hồi mọi refresh token. Gọi API thất bại thì ném
+  // lỗi và GIỮ đăng nhập ở tab này, để người dùng biết các thiết bị khác chưa bị đăng xuất.
   const logoutAll = useCallback(async () => {
-    try {
-      await authApi.logoutAll();
-    } finally {
-      await session.logout();
-    }
+    await authApi.logoutAll();
+    await session.logout();
   }, []);
 
   const value = useMemo(() => ({ ...state, login, logout, logoutAll }), [state, login, logout, logoutAll]);

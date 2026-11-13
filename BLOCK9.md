@@ -108,7 +108,7 @@ dùng để chạy thử, không dùng làm bằng chứng chặn bot.
 | `POST /api/auth/login` | `{ email, password, captcha? }` | `{ accessToken, expiresIn: 900, tokenType }` + cookie `rt`; `INVALID_CREDENTIALS` (kèm `captchaRequired`), `CAPTCHA_REQUIRED`, `INVALID_CAPTCHA`, `ACCOUNT_NOT_ACTIVATED`; 429 |
 | `POST /api/auth/refresh` | cookie `rt` | access token mới + `rt` mới; 401; 403 nếu Origin lạ |
 | `POST /api/auth/logout` | cookie `rt` | thu hồi family của `rt`, xóa cookie |
-| `POST /api/auth/logout-all` | Bearer | `tokenVersion + 1`, thu hồi mọi `rt` |
+| `POST /api/auth/logout-all` | Bearer | `tokenVersion + 1`, thu hồi mọi `rt`, xóa session của bản SSR |
 | `GET /api/auth/me` | Bearer | `{ id, email, displayEmail, role, status }` (role từ DB) |
 | `POST /api/auth/forgot` | `{ email }` | 200 ok, giống nhau cho email có và không có; 429 |
 | `POST /api/auth/reset` | `{ token, password, confirm? }` | 200 ok, không có token; `INVALID_RESET_TOKEN` |
@@ -143,7 +143,7 @@ kỹ thuật, không làm SPA đăng xuất.
 
 | Mục | Giá trị |
 | --- | --- |
-| Access token | JWT HS256, 900 giây. Claim: `sub`, `ver` (tokenVersion), `jti`, `iat`, `exp`, `iss = lua-hong-api`, `aud = lua-hong-web`. Không có email, role hay bí mật |
+| Access token | JWT HS256, 900 giây (đổi được bằng `ACCESS_TOKEN_TTL_SEC` để thử hết hạn nhanh). Claim: `sub`, `ver` (tokenVersion), `jti`, `iat`, `exp`, `iss = lua-hong-api`, `aud = lua-hong-web`. Không có email, role hay bí mật |
 | Verify | `algorithms: ["HS256"]` cố định ở server (từ chối `none` và thuật toán khác), kiểm tra `exp`, `iss`, `aud`; tải user từ DB, phải `active`, `ver` phải bằng `tokenVersion` |
 | Khóa ký | `JWT_SECRET` ≥ 32 ký tự trong `api/.env`, khác `SESSION_SECRET`; không có trong bundle của SPA |
 | Refresh token | 32 byte ngẫu nhiên, cookie `rt`: `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`. DB lưu SHA-256. Hạn 7 ngày tính từ lúc đăng nhập, làm mới không gia hạn |
@@ -171,7 +171,7 @@ kỹ thuật, không làm SPA đăng xuất.
 | Hành động | Access token đã cấp | Refresh token |
 | --- | --- | --- |
 | Đặt lại mật khẩu (ở API hoặc SSR) | Bị từ chối ngay (`tokenVersion + 1`) | Thu hồi tất cả |
-| Đăng xuất mọi nơi (`/logout-all`) | Bị từ chối ngay | Thu hồi tất cả |
+| Đăng xuất mọi nơi (nút trong menu tài khoản, `/logout-all`) | Bị từ chối ngay; session của bản SSR cũng bị xóa | Thu hồi tất cả |
 | Đăng xuất thiết bị này (`/logout`) | SPA bỏ bản của mình; **bản sao ở nơi khác còn dùng tới `exp`, tối đa 15 phút** | Thu hồi family |
 | Refresh token bị dùng lại | Còn tới `exp` | Thu hồi cả family |
 
@@ -180,12 +180,15 @@ kỹ thuật, không làm SPA đăng xuất.
 - `web/src/api/client.js` là nơi duy nhất gắn `Authorization`. Chỉ nhận đường dẫn bắt đầu bằng
   `/api/` của API mình; URL tuyệt đối hay `//domain` bị từ chối trước khi gửi, nên token không đi
   tới bên thứ ba.
-- 401: gọi `session.refresh()` một lần rồi gửi lại request. Refresh thất bại thì xóa token, báo
-  `expired`; `RequireAuth` chuyển về `/login?next=<trang đang mở>&expired=1`.
+- 401: gọi `session.refresh()` một lần rồi gửi lại request. Refresh token hết hiệu lực (refresh
+  nhận 401) thì xóa token, báo `expired`; `RequireAuth` chuyển về `/login?next=<trang đang mở>&expired=1`.
 - 403: báo không đủ quyền, giữ token. Lỗi mạng, 500: báo lỗi kỹ thuật, không đăng xuất.
 - Refresh chạy một lần tại một thời điểm trong tab (các request cùng gặp 401 chờ chung) và giữa
   các tab (`navigator.locks`), vì refresh token xoay vòng: hai tab gửi cùng một cookie cũ sẽ bị API
-  coi là dùng lại. Access token được làm mới trước khi hết hạn 60 giây.
+  coi là dùng lại. Access token được làm mới trước khi hết hạn 60 giây (hoặc 1/5 thời hạn nếu token
+  sống ngắn hơn 5 phút, ví dụ token 60 giây được làm mới ở giây 48).
+- Chỉ kết thúc phiên khi API trả 401 cho refresh token. Làm mới thất bại do mất mạng, 429 hay 5xx
+  thì giữ phiên và thử lại sau 15 giây.
 - Đăng xuất ở một tab báo cho các tab khác qua `BroadcastChannel`.
 - Route guard `/admin/*` và việc ẩn nút chỉ là giao diện; API tự chặn bằng 401.
 
@@ -202,9 +205,9 @@ kỹ thuật, không làm SPA đăng xuất.
 
 | Lệnh | Kết quả |
 | --- | --- |
-| `cd api && npm test` | 86 PASS (có 15 test mới cho JWT, 401, preflight, origin) |
-| `cd web && npm test` | 37 PASS (có 15 test mới cho lớp gọi API và session) |
-| `cd api && npm run acceptance:auth` | **84 PASS, 0 FAIL**: request trực tiếp theo ba bảng nghiệm thu Bài 1 và phần refresh token |
+| `cd api && npm test` | 87 PASS (có 16 test mới cho JWT, thời hạn token, 401, preflight, origin) |
+| `cd web && npm test` | 43 PASS (có 21 test mới cho lớp gọi API và session) |
+| `cd api && npm run acceptance:auth` | **85 PASS, 0 FAIL**: request trực tiếp theo ba bảng nghiệm thu Bài 1 và phần refresh token; chạy được với thời hạn 900 và 60 giây |
 | `cd api && npm run acceptance` (API đang chạy) | Block 6–7: tất cả PASS (script đăng nhập bằng tài khoản seed) |
 | `npm run acceptance` (gốc, SSR Block 8) | 126 PASS sau khi sửa đặt lại mật khẩu ở SSR |
 
@@ -242,6 +245,9 @@ user `@acceptance.test` và xóa bộ đếm rate limit.
 | Đặt lại mật khẩu ở SSR không làm mất hiệu lực JWT của SPA | Hai bản chung bảng users, SSR chỉ xóa session | SSR cũng tăng `tokenVersion` và thu hồi refresh token; nghiệm thu SSR 126 PASS |
 | Token đặt lại mật khẩu có thể mất trong React StrictMode | Hàm khởi tạo state vừa đọc vừa xóa token khỏi URL, StrictMode gọi hai lần | Đọc token trong state, xóa khỏi URL trong effect |
 | Script nghiệm thu Block 6–7 không còn chạy được CRUD | CRUD không token giờ trả 401 | Script đăng nhập bằng tài khoản seed và gắn Bearer |
+| SPA đăng xuất người dùng khi mất mạng lúc tự làm mới token | Đọc lại `web/src/auth/session.js`: hẹn giờ gọi `expire()` với mọi kết quả không thành công, kể cả lỗi mạng | Chỉ kết thúc phiên khi refresh nhận 401; lỗi kỹ thuật thì giữ phiên, thử lại sau 15 giây. Test mới fail với code cũ, pass với code mới |
+| Refresh token bị thu hồi nhưng giao diện không về `/login` | Cùng lần đọc: `clearLocal()` xóa token trước nên `expire()` không phát sự kiện `expired` | Tách trạng thái "đang đăng nhập" khỏi access token; refresh nhận 401 thì phát `expired`, `RequireAuth` chuyển về `/login?expired=1` |
+| Token 60 giây bị làm mới mỗi 5 giây | Công thức hẹn giờ cũ là `expiresIn − 60` với tối thiểu 5 giây | Làm mới sớm `min(60 giây, 1/5 thời hạn)` |
 
 ## 9. Bằng chứng nộp
 
@@ -259,4 +265,8 @@ password, OTP và reset token trong ảnh. Chụp CAPTCHA bằng key thật, kh�
 - `SameSite=Strict` dựa trên việc web và api cùng site (localhost khác cổng vẫn cùng site). Triển
   khai khác site cần `REFRESH_COOKIE_SAMESITE=none` và HTTPS.
 - Mỗi request được bảo vệ tốn một truy vấn tải user (đổi lại role và `tokenVersion` luôn mới).
+- Không có thời hạn nhàn rỗi: tab để mở vẫn tự làm mới token, nên vẫn đăng nhập tới hết 7 ngày kể từ
+  lúc đăng nhập (bản SSR hết hạn sau 2 giờ không thao tác).
+- Nếu response của `/refresh` bị mất giữa đường (cookie mới không tới browser), lần refresh sau gửi
+  token cũ và bị coi là dùng lại: người dùng phải đăng nhập lại.
 - `.env` hiện dùng test key reCAPTCHA của Google; phải thay key thật trước khi chụp bằng chứng.

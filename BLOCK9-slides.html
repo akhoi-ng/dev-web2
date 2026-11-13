@@ -166,8 +166,8 @@
     <tr><td class="k">Chưa xác thực</td><td>Redirect 303 → <code>/login</code></td><td>Status <strong>401</strong>, body <code>{ ok:false, error:{ code } }</code></td></tr>
   </table>
   <div class="grid4" style="margin-top:18px">
-    <div class="stat"><div class="v">84</div><div class="l">kiểm tra nghiệm thu bằng request trực tiếp tới API, đều PASS</div></div>
-    <div class="stat"><div class="v">123</div><div class="l">unit test (api 86, web 37), đều PASS</div></div>
+    <div class="stat"><div class="v">85</div><div class="l">kiểm tra nghiệm thu bằng request trực tiếp tới API, đều PASS</div></div>
+    <div class="stat"><div class="v">130</div><div class="l">unit test (api 87, web 43), đều PASS</div></div>
     <div class="stat"><div class="v">0</div><div class="l">token trong localStorage / sessionStorage</div></div>
     <div class="stat"><div class="v">1</div><div class="l">chỗ duy nhất gắn header Authorization: lớp gọi API</div></div>
   </div>
@@ -347,7 +347,7 @@
   <table>
     <tr><th>Hành động</th><th>Server làm gì</th><th>Access token đã cấp</th><th>Refresh token</th></tr>
     <tr><td class="k">Đăng xuất (thiết bị này)</td><td>Thu hồi family của <code>rt</code>, xóa cookie</td><td>Bản trong SPA bị bỏ; <strong>bản sao ở nơi khác còn dùng tới exp (≤ 15 phút)</strong></td><td>Hết hiệu lực</td></tr>
-    <tr><td class="k">Đăng xuất mọi nơi</td><td><code>tokenVersion + 1</code>, thu hồi mọi <code>rt</code></td><td>Bị từ chối ngay ở request kế tiếp</td><td>Hết hiệu lực</td></tr>
+    <tr><td class="k">Đăng xuất mọi nơi</td><td><code>tokenVersion + 1</code>, thu hồi mọi <code>rt</code>, xóa session SSR</td><td>Bị từ chối ngay ở request kế tiếp</td><td>Hết hiệu lực</td></tr>
     <tr><td class="k">Đặt lại mật khẩu (API hoặc SSR)</td><td><code>tokenVersion + 1</code>, thu hồi mọi <code>rt</code>, xóa session SSR</td><td>Bị từ chối ngay</td><td>Hết hiệu lực</td></tr>
     <tr><td class="k">Refresh token bị dùng lại</td><td>Thu hồi cả family</td><td>Còn tới exp</td><td>Cả family hết hiệu lực</td></tr>
     <tr><td class="k">Hạ role (Bài 2)</td><td>Không cần làm gì</td><td>Role đọc từ DB mỗi request</td><td>Không đổi</td></tr>
@@ -464,13 +464,13 @@ POST /api/auth/activate/resend  { email }
     <table>
       <tr><th>Tệp</th><th>Việc</th></tr>
       <tr><td class="k"><code>api/client.js</code></td><td>Gắn Bearer cho <code>/api/...</code> của API mình, từ chối URL tuyệt đối; 401 → refresh một lần rồi gửi lại; 403 giữ token</td></tr>
-      <tr><td class="k"><code>auth/session.js</code></td><td>Access token trong biến; refresh một lần tại một thời điểm, Web Locks giữa các tab; tự làm mới trước hạn 60 giây</td></tr>
+      <tr><td class="k"><code>auth/session.js</code></td><td>Access token trong biến; refresh một lần tại một thời điểm, Web Locks giữa các tab; tự làm mới trước hạn 60 giây; mất mạng không bị đăng xuất</td></tr>
       <tr><td class="k"><code>auth/AuthContext.jsx</code></td><td>Trạng thái loading / anon / authed; tải lại trang thì khôi phục bằng <code>/refresh</code></td></tr>
       <tr><td class="k"><code>auth/RequireAuth.jsx</code></td><td>Route guard <code>/admin/*</code> → <code>/login?next=…</code></td></tr>
       <tr><td class="k"><code>auth/Recaptcha.jsx</code></td><td>Widget reCAPTCHA v2, site key lấy từ API</td></tr>
     </table>
     <div style="display:grid;gap:14px;align-content:start">
-      <div class="card"><h3>5 trang mới</h3><p class="small"><code>/register</code>, <code>/activate</code>, <code>/login</code>, <code>/forgot</code>, <code>/reset</code>. Header hiện email và nút Đăng xuất khi đã đăng nhập.</p></div>
+      <div class="card"><h3>5 trang mới</h3><p class="small"><code>/register</code>, <code>/activate</code>, <code>/login</code>, <code>/forgot</code>, <code>/reset</code>. Header có menu tài khoản: Đăng xuất, Đăng xuất mọi nơi.</p></div>
       <div class="card tint"><h3>Guard chỉ là giao diện</h3><p class="small">Ẩn nút, chặn route hay sửa cờ trong localStorage không đổi quyền: mọi request ghi tới API vẫn qua bước verify ở server.</p></div>
     </div>
   </div>
@@ -498,7 +498,7 @@ POST /api/auth/activate/resend  { email }
 <!-- 17. Nghiệm thu -->
 <section class="slide">
   <div class="kicker">Nghiệm thu bằng request trực tiếp · npm run acceptance:auth</div>
-  <h2>84 / 84 PASS trên Supabase</h2>
+  <h2>85 / 85 PASS trên Supabase</h2>
   <div class="grid2">
     <pre><span class="pass">PASS</span> chưa đăng nhập POST /api/dishes -> 401
 <span class="pass">PASS</span> JWT sửa payload (role: admin) -> 401 UNAUTHENTICATED
@@ -514,10 +514,10 @@ POST /api/auth/activate/resend  { email }
 <span class="pass">PASS</span> JWT cấp trước reset -> 401 (tokenVersion)
 <span class="pass">PASS</span> vượt giới hạn forgot -> 429 RATE_LIMITED
 <span class="c">…</span>
-<span class="pass">84 PASS, 0 FAIL</span></pre>
+<span class="pass">85 PASS, 0 FAIL</span></pre>
     <div style="display:grid;gap:14px;align-content:start">
       <div class="card"><h3>Cách chạy</h3><p class="small">Script tự khởi động API ở cổng 3998, dùng siteverify giả lập, đọc thư trong <code>api/mail-outbox/</code> và đối chiếu bản ghi DB (hash, usedAt, attempts, tokenVersion, revokedAt). Chỉ tạo user <code>@acceptance.test</code>.</p></div>
-      <div class="card"><h3>Kiểm thử khác</h3><p class="small">Unit test api 86 (verify JWT, 401, preflight), web 37 (lớp gọi API, session). Script Block 6–7 vẫn PASS khi đăng nhập bằng tài khoản seed. Nghiệm thu SSR Block 8 chạy lại sau khi sửa reset: 126 PASS.</p></div>
+      <div class="card"><h3>Kiểm thử khác</h3><p class="small">Unit test api 87 (verify JWT, 401, preflight), web 43 (lớp gọi API, session). Script Block 6–7 vẫn PASS khi đăng nhập bằng tài khoản seed. Nghiệm thu SSR Block 8 chạy lại sau khi sửa reset: 126 PASS.</p></div>
       <div class="card tint"><h3>Bằng chứng nộp</h3><p class="small">Ảnh giao diện, Network (OPTIONS + Bearer), Application → Cookies (<code>rt</code> HttpOnly), bản ghi DB; che token, password, OTP. Chụp CAPTCHA bằng key thật, không dùng test key.</p></div>
     </div>
   </div>
@@ -534,7 +534,7 @@ POST /api/auth/activate/resend  { email }
     <tr><td class="k">Trang "Về chúng tôi" hỏng</td><td>Khóa <code>/api/chefs</code> làm trang công khai nhận 401</td><td>Thêm <code>GET /api/team</code> công khai, chỉ các trường hiển thị</td></tr>
     <tr><td class="k">Reset ở SSR không giết JWT</td><td>Hai bản chung bảng users; reset SSR chỉ xóa session</td><td>Reset SSR cũng tăng <code>tokenVersion</code>, thu hồi <code>rt</code></td></tr>
     <tr><td class="k">Token reset mất trong StrictMode</td><td>Đọc rồi xóa token khỏi URL trong hàm khởi tạo state, React gọi hàm đó hai lần</td><td>Đọc trong state, xóa URL trong effect</td></tr>
-    <tr><td class="k">Script Block 6–7 FAIL</td><td>CRUD không token giờ là 401</td><td>Script đăng nhập bằng tài khoản seed rồi gắn Bearer</td></tr>
+    <tr><td class="k">Mất mạng lúc tự refresh → bị đăng xuất</td><td>Đọc lại <code>session.js</code>: hẹn giờ coi mọi lần refresh hỏng là hết phiên</td><td>Chỉ hết phiên khi refresh nhận 401; lỗi kỹ thuật thử lại sau 15 giây</td></tr>
   </table>
   <div class="notes">Deck yêu cầu ghi một lỗi do agent tạo ra, cách tái hiện và bằng chứng sau khi sửa. Lỗi db push đáng kể nhất: nếu chạy thẳng sẽ mất index tìm kiếm của Block 7 mà không có thông báo lỗi nào.</div>
 </section>
@@ -547,7 +547,7 @@ POST /api/auth/activate/resend  { email }
     <li>Đăng xuất một thiết bị: bản sao access token ở nơi khác còn dùng được tới <code>exp</code> (tối đa 15 phút). Muốn chặn ngay thì dùng "Đăng xuất mọi nơi"</li>
     <li>XSS trong trang vẫn dùng được access token đang ở bộ nhớ và gọi <code>/refresh</code> khi trang mở; HttpOnly chỉ chặn việc <em>đọc</em> refresh token</li>
     <li>Cookie <code>SameSite=Strict</code> dựa trên việc web và api cùng site (localhost khác cổng vẫn cùng site). Triển khai khác site cần <code>REFRESH_COOKIE_SAMESITE=none</code> + HTTPS</li>
-    <li>Mỗi request được bảo vệ tốn một truy vấn tải user: đổi lại role và tokenVersion luôn mới</li>
+    <li>Không có thời hạn nhàn rỗi: tab để mở tự làm mới token tới hết 7 ngày (SSR: 2 giờ không thao tác)</li>
     <li><code>.env</code> đang dùng test key reCAPTCHA của Google; phải thay key thật trước khi chụp bằng chứng chặn bot</li>
     <li>Chưa có phân quyền theo role và MFA: thuộc Bài 2 trên bản SSR</li>
   </ul>
@@ -562,7 +562,7 @@ POST /api/auth/activate/resend  { email }
     <li>Access token JWT 15 phút trong bộ nhớ, refresh token xoay vòng trong cookie HttpOnly</li>
     <li>Verify cố định HS256, kiểm tra exp, iss, aud; role và tokenVersion đọc từ DB mỗi request</li>
     <li>Đăng ký, OTP, CAPTCHA, bộ đếm sai, reset dùng lại nguyên logic Block 8, chung DB với SSR</li>
-    <li>Kiểm chứng bằng request trực tiếp và bản ghi DB: 84 PASS, không dựa vào giao diện</li>
+    <li>Kiểm chứng bằng request trực tiếp và bản ghi DB: 85 PASS, không dựa vào giao diện</li>
   </ul>
   <p style="margin-top:auto;font-size:30px;font-weight:800">Cảm ơn thầy và các bạn. Q&amp;A</p>
   <div class="notes">Quay lại câu hỏi đầu: request chứng minh người gọi bằng Bearer token đã ký; server verify chữ ký và hạn, tải user từ DB, rồi quyết định cho tiếp tục hay trả 401.</div>

@@ -11,7 +11,7 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const prisma = require("../db/prisma");
-const { POLICY, jwtSecret } = require("./config");
+const { POLICY, jwtSecret, accessTokenTtlSec } = require("./config");
 const { randomToken, sha256 } = require("./crypto");
 
 const AT = POLICY.accessToken;
@@ -21,19 +21,20 @@ const RT = POLICY.refreshToken;
 
 function signAccessToken(user, now = Date.now()) {
   const iat = Math.floor(now / 1000);
+  const ttlSec = accessTokenTtlSec();
   const token = jwt.sign(
     { ver: user.tokenVersion, iat },
     jwtSecret(),
     {
       algorithm: AT.algorithm,
-      expiresIn: AT.ttlSec,
+      expiresIn: ttlSec,
       issuer: AT.issuer,
       audience: AT.audience,
       subject: String(user.id),
       jwtid: crypto.randomUUID(),
     }
   );
-  return { accessToken: token, expiresIn: AT.ttlSec, tokenType: "Bearer" };
+  return { accessToken: token, expiresIn: ttlSec, tokenType: "Bearer" };
 }
 
 /*
