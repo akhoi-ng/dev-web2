@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lửa Hồng — Xác thực cho SPA bằng JWT (Block 9)</title>
+<title>Lửa Hồng — Xác thực cho SPA, phân quyền và MFA (Block 9)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -105,6 +105,7 @@
   .team div span { display: block; color: var(--soft); font-size: 13px; }
   .flame { position: absolute; right: 70px; top: 120px; width: 300px; height: 300px; border-radius: 50%; background: conic-gradient(from 200deg, var(--brand-600), var(--saffron), var(--brand-500), var(--brand-600)); opacity: .9; filter: blur(.3px); }
   .flame::after { content: "JWT"; position: absolute; inset: 40px; border-radius: 50%; background: var(--cream); display: grid; place-items: center; font-size: 76px; font-family: var(--mono); font-weight: 800; color: var(--brand-700); }
+  .flame.mfa::after { content: "MFA"; }
   .flame-cap { position: absolute; right: 70px; top: 440px; width: 300px; text-align: center; color: var(--muted); font-weight: 600; }
 
   /* Ghi chú người trình bày */
@@ -139,9 +140,9 @@
 
 <!-- 1. Bìa -->
 <section class="slide cover">
-  <span class="badge">Phát triển ứng dụng web · Block 9 · Bài 1</span>
-  <h1 style="max-width:800px">Xác thực cho SPA<br><span style="color:var(--brand-600)">bằng JWT và<br>refresh token</span></h1>
-  <p class="lead" style="margin-top:18px;max-width:640px">Đăng ký có reCAPTCHA, kích hoạt bằng OTP, đăng nhập trả access token, quên mật khẩu, cho bản CSR của <strong>Lửa Hồng</strong> (React SPA <code>web</code> + REST API <code>api</code>, hai origin).</p>
+  <span class="badge">Phát triển ứng dụng web · Block 9 · Bài 1 + Bài 2</span>
+  <h1 style="max-width:800px">Xác thực cho SPA,<br><span style="color:var(--brand-600)">phân quyền<br>và MFA</span></h1>
+  <p class="lead" style="margin-top:18px;max-width:640px"><strong>Bài 1:</strong> đăng ký có reCAPTCHA, OTP, access token, quên mật khẩu cho bản CSR của <strong>Lửa Hồng</strong> (React SPA <code>web</code> + REST API <code>api</code>).<br><strong>Bài 2:</strong> phân quyền RBAC/ABAC và MFA (TOTP) trên bản SSR.</p>
   <div class="flame"></div>
   <div class="flame-cap">token chứng minh danh tính, quyền do backend quyết định</div>
   <div class="team">
@@ -150,7 +151,7 @@
     <div>Trần Nguyễn Tuấn Minh<span>24127084</span></div>
     <div>Nguyễn Anh Khôi<span>24127430</span></div>
   </div>
-  <div class="notes">Block 9 Bài 1: chuyển bốn chức năng tài khoản của Block 8 (đăng ký, kích hoạt, đăng nhập, quên mật khẩu) sang bản CSR của Block 6–7. Server giữ nguyên bảng tài khoản và logic; thay đổi nằm ở cách gửi credential (cookie sid thành Bearer token) và cách biểu diễn kết quả (form + redirect thành JSON).</div>
+  <div class="notes">Deck gồm hai phần: slide 2–18 là Bài 1 (JWT cho SPA), slide 19–28 là Bài 2 (phân quyền và MFA trên SSR). Block 9 Bài 1: chuyển bốn chức năng tài khoản của Block 8 (đăng ký, kích hoạt, đăng nhập, quên mật khẩu) sang bản CSR của Block 6–7. Server giữ nguyên bảng tài khoản và logic; thay đổi nằm ở cách gửi credential (cookie sid thành Bearer token) và cách biểu diễn kết quả (form + redirect thành JSON).</div>
 </section>
 
 <!-- 2. Câu hỏi -->
@@ -166,7 +167,7 @@
     <tr><td class="k">Chưa xác thực</td><td>Redirect 303 → <code>/login</code></td><td>Status <strong>401</strong>, body <code>{ ok:false, error:{ code } }</code></td></tr>
   </table>
   <div class="grid4" style="margin-top:18px">
-    <div class="stat"><div class="v">85</div><div class="l">kiểm tra nghiệm thu bằng request trực tiếp tới API, đều PASS</div></div>
+    <div class="stat"><div class="v">88</div><div class="l">kiểm tra nghiệm thu bằng request trực tiếp tới API, đều PASS</div></div>
     <div class="stat"><div class="v">130</div><div class="l">unit test (api 87, web 43), đều PASS</div></div>
     <div class="stat"><div class="v">0</div><div class="l">token trong localStorage / sessionStorage</div></div>
     <div class="stat"><div class="v">1</div><div class="l">chỗ duy nhất gắn header Authorization: lớp gọi API</div></div>
@@ -484,21 +485,21 @@ POST /api/auth/activate/resend  { email }
   <table>
     <tr><th>Endpoint</th><th>Ai gọi được</th><th>Ghi chú</th></tr>
     <tr><td class="k"><code>GET /api/dishes</code>, <code>GET /api/dishes/:id</code></td><td><span class="tag ok">Công khai</span></td><td>Tìm kiếm 4 mode, 3 kiểu phân trang của Block 7 giữ nguyên</td></tr>
-    <tr><td class="k"><code>POST · PATCH · DELETE /api/dishes</code></td><td><span class="tag bad">Bearer</span></td><td>Thiếu hoặc sai token → 401</td></tr>
-    <tr><td class="k"><code>/api/chefs/*</code>, <code>/api/ingredients/*</code></td><td><span class="tag bad">Bearer</span></td><td>Mọi method, kể cả GET</td></tr>
+    <tr><td class="k"><code>POST · PATCH · DELETE /api/dishes</code></td><td><span class="tag bad">Bearer</span></td><td>Thiếu hoặc sai token → 401. Bài 2: chỉ role admin, khác → 403</td></tr>
+    <tr><td class="k"><code>/api/chefs/*</code>, <code>/api/ingredients/*</code></td><td><span class="tag bad">Bearer</span></td><td>Mọi method, kể cả GET. Bài 2: viewer chỉ GET, editor thêm POST/PATCH, admin thêm DELETE</td></tr>
     <tr><td class="k"><code>/api/admin/bookings/*</code></td><td><span class="tag bad">Bearer</span></td><td>Trang quản lý đặt bàn</td></tr>
     <tr><td class="k"><code>GET /api/team</code></td><td><span class="tag ok">Công khai</span></td><td>Mới: trang "Về chúng tôi" cần tên, chuyên môn đầu bếp mà <code>/api/chefs</code> đã khóa</td></tr>
     <tr><td class="k"><code>/api/stats</code>, <code>/api/options</code>, <code>POST /api/bookings</code></td><td><span class="tag ok">Công khai</span></td><td>Khách đặt bàn không cần tài khoản</td></tr>
     <tr><td class="k"><code>/api/auth/*</code></td><td><span class="tag ok">Công khai</span></td><td>Trừ <code>/me</code>, <code>/logout-all</code> cần Bearer</td></tr>
   </table>
-  <p class="muted small" style="margin-top:12px">Bài 1 chưa phân quyền theo role: mọi tài khoản <code>active</code> dùng được CRUD. Role vẫn đọc từ DB để Bài 2 thêm RBAC/ABAC.</p>
+  <p class="muted small" style="margin-top:12px">Bài 1 chỉ kiểm tra danh tính. Bài 2 thêm phân quyền theo role (đọc từ DB mỗi request) và <code>GET /api/dishes</code> chỉ trả món đã đăng (slide 23).</p>
   <div class="notes">Mọi request ghi và mọi endpoint chefs, ingredients đi qua bước kiểm tra danh tính trước handler. /api/team là điều chỉnh của nhóm: trang công khai không nên phải đăng nhập chỉ để xem tên đầu bếp.</div>
 </section>
 
 <!-- 17. Nghiệm thu -->
 <section class="slide">
   <div class="kicker">Nghiệm thu bằng request trực tiếp · npm run acceptance:auth</div>
-  <h2>85 / 85 PASS trên Supabase</h2>
+  <h2>88 / 88 PASS trên Supabase</h2>
   <div class="grid2">
     <pre><span class="pass">PASS</span> chưa đăng nhập POST /api/dishes -> 401
 <span class="pass">PASS</span> JWT sửa payload (role: admin) -> 401 UNAUTHENTICATED
@@ -513,11 +514,12 @@ POST /api/auth/activate/resend  { email }
 <span class="pass">PASS</span> gửi lại rt đã dùng -> thu hồi cả family
 <span class="pass">PASS</span> JWT cấp trước reset -> 401 (tokenVersion)
 <span class="pass">PASS</span> vượt giới hạn forgot -> 429 RATE_LIMITED
+<span class="pass">PASS</span> viewer: POST /api/chefs -> 403 FORBIDDEN  <span class="c">(Bài 2)</span>
 <span class="c">…</span>
-<span class="pass">85 PASS, 0 FAIL</span></pre>
+<span class="pass">88 PASS, 0 FAIL</span></pre>
     <div style="display:grid;gap:14px;align-content:start">
       <div class="card"><h3>Cách chạy</h3><p class="small">Script tự khởi động API ở cổng 3998, dùng siteverify giả lập, đọc thư trong <code>api/mail-outbox/</code> và đối chiếu bản ghi DB (hash, usedAt, attempts, tokenVersion, revokedAt). Chỉ tạo user <code>@acceptance.test</code>.</p></div>
-      <div class="card"><h3>Kiểm thử khác</h3><p class="small">Unit test api 87 (verify JWT, 401, preflight), web 43 (lớp gọi API, session). Script Block 6–7 vẫn PASS khi đăng nhập bằng tài khoản seed. Nghiệm thu SSR Block 8 chạy lại sau khi sửa reset: 126 PASS.</p></div>
+      <div class="card"><h3>Kiểm thử khác</h3><p class="small">Unit test api 87 (verify JWT, 401, preflight), web 43 (lớp gọi API, session). Script Block 6–7 vẫn PASS (74 dòng) khi đăng nhập bằng tài khoản seed. Sau Bài 2, nghiệm thu SSR: 205 PASS.</p></div>
       <div class="card tint"><h3>Bằng chứng nộp</h3><p class="small">Ảnh giao diện, Network (OPTIONS + Bearer), Application → Cookies (<code>rt</code> HttpOnly), bản ghi DB; che token, password, OTP. Chụp CAPTCHA bằng key thật, không dùng test key.</p></div>
     </div>
   </div>
@@ -539,6 +541,229 @@ POST /api/auth/activate/resend  { email }
   <div class="notes">Deck yêu cầu ghi một lỗi do agent tạo ra, cách tái hiện và bằng chứng sau khi sửa. Lỗi db push đáng kể nhất: nếu chạy thẳng sẽ mất index tìm kiếm của Block 7 mà không có thông báo lỗi nào.</div>
 </section>
 
+<!-- ═══════════════════════════ BÀI 2 ═══════════════════════════ -->
+
+<!-- B1. Mở đầu Bài 2 -->
+<section class="slide cover">
+  <span class="badge">Block 9 · Bài 2 · bản SSR</span>
+  <h1 style="max-width:780px">Phân quyền<br><span style="color:var(--brand-600)">RBAC, ABAC<br>và MFA</span></h1>
+  <p class="lead" style="margin-top:18px;max-width:640px">Biết người gọi là ai rồi thì <strong>được làm gì</strong>? Và password đúng đã <strong>đủ</strong> để đăng nhập chưa?</p>
+  <div class="flame mfa"></div>
+  <div class="flame-cap">quyền đọc từ DB mỗi request, giao diện chỉ ẩn nút</div>
+  <div class="grid3" style="margin-top:auto;max-width:760px">
+    <div class="stat"><div class="v">3</div><div class="l">role: viewer, editor, admin</div></div>
+    <div class="stat"><div class="v">1</div><div class="l">nơi quyết định quyền: <code>src/auth/policy.js</code></div></div>
+    <div class="stat"><div class="v">77</div><div class="l">dòng nghiệm thu Bài 2, đều PASS</div></div>
+  </div>
+  <div class="notes">Bài 2 làm trên bản SSR (Express + EJS) của Block 8. Bản SSR và bản API dùng chung database Supabase, nên những gì thêm vào DB ảnh hưởng cả hai bản; slide 26 nói cách nhóm chặn đường vòng qua API.</div>
+</section>
+
+<!-- B2. Dữ liệu -->
+<section class="slide">
+  <div class="kicker">Bài 2 · dữ liệu cần thêm</div>
+  <h2>Ba cột thuộc tính, hai bảng cho MFA</h2>
+  <div class="grid2">
+    <table>
+      <tr><th>Bảng / cột</th><th>Ý nghĩa</th></tr>
+      <tr><td class="k"><code>dishes.status</code></td><td><code>draft</code> | <code>published</code>; khách chỉ thấy published</td></tr>
+      <tr><td class="k"><code>users.chefId</code></td><td>Đầu bếp Editor phụ trách; chỉ seed / admin gán</td></tr>
+      <tr><td class="k"><code>users.mfaEnabled</code>, <code>mfaSecret</code></td><td>Secret TOTP mã hóa AES-256-GCM bằng <code>MFA_ENC_KEY</code></td></tr>
+      <tr><td class="k"><code>mfaPendingSecret</code>, <code>mfaLastStep</code></td><td>Secret chờ xác nhận; bước 30 giây của mã đã dùng</td></tr>
+      <tr><td class="k"><code>recovery_codes</code></td><td><code>userId</code>, <code>codeHash</code> (HMAC), <code>usedAt</code></td></tr>
+      <tr><td class="k"><code>mfa_challenges</code></td><td>Trạng thái chờ MFA: hash token, hạn 5 phút, số lần thử</td></tr>
+    </table>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="card"><h3>Đổi DB không dùng <code>db push</code></h3><p class="small"><code>prisma/block9-rbac-mfa.sql</code> chạy lại nhiều lần không lỗi (<code>npm run db:block9-2</code>). Món đang có nhận <code>published</code> ở lần chạy đầu, sau đó mặc định đổi thành <code>draft</code>.</p></div>
+      <div class="card tint"><h3>Seed 4 tài khoản active</h3><p class="small">admin, viewer, editor của đầu bếp A (Nguyễn Văn Minh), editor của đầu bếp B (Trần Quốc Huy). Mỗi đầu bếp có món draft và món published để thử ABAC.</p></div>
+    </div>
+  </div>
+  <div class="notes">Nếu thêm cột status với mặc định draft cho mọi dòng, toàn bộ 1.500 món sẽ biến khỏi thực đơn công khai. ADD COLUMN IF NOT EXISTS với mặc định published rồi đổi mặc định thành draft giải quyết việc này, và chạy lại không đăng lại món draft.</div>
+</section>
+
+<!-- B3. RBAC -->
+<section class="slide">
+  <div class="kicker">Bài 2 · RBAC · src/auth/policy.js + app.js</div>
+  <h2>Quyền theo role, kiểm tra theo từng thao tác</h2>
+  <div class="grid2">
+    <div>
+      <table>
+        <tr><th>Role</th><th>Đọc</th><th>Tạo</th><th>Sửa</th><th>Xóa</th></tr>
+        <tr><td class="k">Viewer</td><td><span class="tag ok">✓</span></td><td><span class="tag bad">403</span></td><td><span class="tag bad">403</span></td><td><span class="tag bad">403</span></td></tr>
+        <tr><td class="k">Editor</td><td><span class="tag ok">✓</span></td><td><span class="tag ok">✓</span></td><td><span class="tag ok">✓*</span></td><td><span class="tag bad">403</span></td></tr>
+        <tr><td class="k">Admin</td><td><span class="tag ok">✓</span></td><td><span class="tag ok">✓</span></td><td><span class="tag ok">✓</span></td><td><span class="tag ok">✓</span></td></tr>
+      </table>
+      <p class="muted small" style="margin-top:10px">* với món ăn: thêm điều kiện ABAC (slide 22)</p>
+      <pre style="margin-top:12px;font-size:14px"><span class="c">// thao tác suy ra từ method + đường dẫn</span>
+GET  …/new    → <span class="k">create</span>   POST   → <span class="k">create</span>
+GET  …/edit   → <span class="k">update</span>   PATCH  → <span class="k">update</span>
+GET  …/delete → <span class="k">delete</span>   DELETE → <span class="k">delete</span>
+GET  khác     → <span class="k">read</span>     khác   → <span class="fail">từ chối</span></pre>
+    </div>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="card"><h3>Một middleware cho mọi <code>/admin/*</code></h3><p class="small"><code>requireLogin → requireRole → requirePermission</code> chạy trước router. Route mới thêm sau cũng được bảo vệ mà không cần nhớ gắn.</p></div>
+      <div class="card"><h3>Role đọc từ DB mỗi request</h3><p class="small"><code>loadSession</code> lấy <code>role</code>, <code>chefId</code> từ bảng users. Hạ admin xuống viewer: request kế tiếp đã 403 (có dòng nghiệm thu).</p></div>
+      <div class="card tint"><h3>Giao diện chỉ phản ánh</h3><p class="small">View hỏi cùng <code>policy.js</code> để ẩn nút Thêm / Sửa / Xóa, nhưng gọi thẳng URL vẫn nhận 403 từ server.</p></div>
+    </div>
+  </div>
+  <div class="notes">Bản Block 8 đặt requireRole("admin") cho cả /admin nên Viewer bị chặn cả việc đọc và không có role Editor. Nay Viewer đọc được mọi trang quản trị, kể cả đặt bàn, nhưng không tạo, sửa, xóa. Trang 403 ghi rõ role và thao tác bị từ chối.</div>
+</section>
+
+<!-- B4. ABAC -->
+<section class="slide">
+  <div class="kicker">Bài 2 · ABAC · src/routes/admin/dishes.js</div>
+  <h2>Editor chỉ sửa món <span class="hl">draft</span> của đầu bếp mình</h2>
+  <div class="grid2">
+    <pre style="font-size:14px"><span class="c">// policy.js: điều kiện món phải thỏa</span>
+<span class="k">function</span> dishEditScope(user) {
+  <span class="k">if</span> (isAdmin(user)) <span class="k">return</span> {};
+  <span class="k">if</span> (can(user, <span class="s">"update"</span>) &amp;&amp; user.chefId)
+    <span class="k">return</span> { chefId: user.chefId, status: <span class="s">"draft"</span> };
+  <span class="k">return</span> <span class="k">null</span>;   <span class="c">// không sửa được món nào</span>
+}
+
+<span class="c">// PATCH: điều kiện nằm trong câu UPDATE</span>
+<span class="k">await</span> prisma.$transaction(<span class="k">async</span> (tx) =&gt; {
+  <span class="k">const</span> r = <span class="k">await</span> tx.dish.updateMany({
+    where: { id, ...scope }, data });
+  <span class="k">if</span> (r.count !== 1) <span class="k">return</span> <span class="k">false</span>; <span class="c">// → 403</span>
+  <span class="c">// rồi mới thay công thức</span>
+});</pre>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="card"><h3>chefId lấy từ tài khoản, không từ form</h3><p class="small">Editor không thấy ô chọn đầu bếp và trạng thái. Body có <code>chefId</code> giả hay <code>status=published</code>: <code>validateDish(..., { canAssign: false })</code> bỏ qua. Món Editor tạo luôn thuộc đầu bếp của tài khoản, ở <code>draft</code>.</p></div>
+      <div class="card"><h3>Kiểm tra ở cả GET form và PATCH</h3><p class="small">Mở form sửa món của đầu bếp khác hay món published: 403 trước khi render.</p></div>
+      <div class="card tint"><h3>Đổi status giữa chừng</h3><p class="small">Editor mở form (200) → Admin đăng món → Editor gửi: UPDATE không khớp dòng nào → <strong>403</strong>, món không đổi. Nếu chỉ đọc món rồi mới UPDATE thì vẫn còn khe hở giữa hai bước.</p></div>
+    </div>
+  </div>
+  <div class="notes">PostgreSQL ở mức READ COMMITTED đánh giá lại điều kiện WHERE trên phiên bản mới nhất của dòng khi UPDATE, nên Admin đăng món trước thì UPDATE của Editor không khớp. Editor chưa gắn đầu bếp: không thêm được món, không sửa được món nào.</div>
+</section>
+
+<!-- B5. Trang công khai -->
+<section class="slide">
+  <div class="kicker">Bài 2 · món draft ở đâu cũng không lộ</div>
+  <h2>Khách chỉ thấy món đã đăng</h2>
+  <table>
+    <tr><th>Chỗ đọc món</th><th>Điều kiện thêm</th><th>Món draft</th></tr>
+    <tr><td class="k"><code>/dishes</code>, <code>/dishes/items</code></td><td><code>status = "published"</code> trong <code>buildDishWhere</code> và câu SQL xếp hạng (Toàn văn, Gần đúng)</td><td>Không có trong danh sách, số đếm, ô danh mục</td></tr>
+    <tr><td class="k"><code>/dishes/:id</code></td><td><code>findFirst({ id, status })</code></td><td><strong>404</strong></td></tr>
+    <tr><td class="k"><code>/about</code></td><td>Đếm món theo đầu bếp chỉ tính published</td><td>Không tính</td></tr>
+    <tr><td class="k"><code>GET /api/dishes</code>, <code>/api/stats</code>, <code>/api/team</code></td><td>Cùng điều kiện (bản API dùng chung DB)</td><td>Không có / 404</td></tr>
+    <tr><td class="k"><code>/admin/dishes</code></td><td>Không lọc; cột trạng thái Nháp / Đã đăng</td><td>Mọi role đọc được</td></tr>
+  </table>
+  <p class="muted small" style="margin-top:14px"><code>status</code> không đọc từ query string: khách thêm <code>?status=draft</code> lên URL không đổi được điều kiện.</p>
+  <div class="notes">Báo cáo ban đầu chỉ nói thiếu cột status; khi đọc lại code nhóm thấy trang công khai và tìm kiếm SQL không lọc theo status nên món draft sẽ hiện ra ngay khi thêm cột. Nghiệm thu có dòng tìm món draft bằng basic và fuzzy đều không ra.</div>
+</section>
+
+<!-- B6. MFA: bật -->
+<section class="slide">
+  <div class="kicker">Bài 2 · MFA · /account/security</div>
+  <h2>Bật MFA chỉ sau khi nhập đúng mã</h2>
+  <div class="flow">
+    <div class="step"><b>1. Bật</b>server sinh secret 160 bit, lưu <code>mfaPendingSecret</code> (đã mã hóa)</div>
+    <div class="arrow">→</div>
+    <div class="step hot"><b>2. QR + secret</b>QR vẽ ở server (data URL), secret nhập tay; <code style="background:rgba(255,255,255,.18);color:#fff">no-store</code></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>3. Xác nhận</b>mã 6 số đúng → <code>mfaEnabled = true</code>, ghi <code>mfaLastStep</code></div>
+    <div class="arrow">→</div>
+    <div class="step end"><b>4. Mã khôi phục</b>10 mã hiện <strong>một lần</strong>, DB chỉ lưu HMAC</div>
+  </div>
+  <div class="grid3" style="margin-top:24px">
+    <div class="card"><h3>Không gửi secret ra ngoài</h3><p class="small">Không dùng dịch vụ vẽ QR bên thứ ba: <code>otpauth://</code> chứa secret. Thư viện <code>otplib</code> (RFC 6238) và <code>qrcode</code>, không tự viết thuật toán.</p></div>
+    <div class="card"><h3>Secret mã hóa trong DB</h3><p class="small">AES-256-GCM, khóa <code>MFA_ENC_KEY</code> tách khỏi <code>SESSION_SECRET</code>. Đọc được bảng users vẫn không sinh được mã; sửa dữ liệu thì giải mã thất bại.</p></div>
+    <div class="card"><h3>Sau khi bật</h3><p class="small">Hủy các session khác, tăng <code>tokenVersion</code>, thu hồi refresh token của bản SPA: mọi nơi đang đăng nhập phải qua MFA.</p></div>
+  </div>
+  <div class="notes">Mã sai ở bước xác nhận: INVALID_MFA_CODE, MFA vẫn tắt. Thay thiết bị dùng cùng luồng nhưng secret cũ vẫn có hiệu lực tới khi secret mới được xác nhận, nên bỏ dở giữa chừng không làm tài khoản mất MFA.</div>
+</section>
+
+<!-- B7. MFA: đăng nhập -->
+<section class="slide">
+  <div class="kicker">Bài 2 · MFA · đăng nhập hai bước</div>
+  <h2>Password đúng chỉ tạo trạng thái chờ, chưa có session</h2>
+  <div class="flow">
+    <div class="step"><b>POST /login</b>rate limit, CAPTCHA, Argon2 như Block 8</div>
+    <div class="arrow">→</div>
+    <div class="step hot"><b>MFA bật?</b>tạo <code style="background:rgba(255,255,255,.18);color:#fff">mfa_challenges</code> + cookie <code style="background:rgba(255,255,255,.18);color:#fff">mfa</code> (5 phút)</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>/login/mfa</b>mã TOTP hoặc mã khôi phục; <code>/admin</code> vẫn 303 /login</div>
+    <div class="arrow">→</div>
+    <div class="step end"><b>createSession</b>mã đúng mới cấp <code style="background:rgba(255,255,255,.18);color:#fff">sid</code>; vẫn là chỗ duy nhất</div>
+  </div>
+  <div class="grid3" style="margin-top:22px">
+    <div class="card"><h3>Giới hạn thử</h3><p class="small">5 lần sai trong một lần chờ → hủy, đăng nhập lại từ đầu. Lượt thử được <strong>giữ trước</strong> khi kiểm tra mã nên request song song không vượt. Thêm 10 lần / 15 phút theo tài khoản, 50 / 15 phút theo IP.</p></div>
+    <div class="card"><h3>Chống dùng lại mã</h3><p class="small">UPDATE <code>mfaLastStep</code> có điều kiện "bước mới &gt; bước cũ": cùng một mã gửi hai lần thì lần sau bị từ chối. Mã khôi phục: UPDATE <code>usedAt</code> khi còn <code>NULL</code>.</p></div>
+    <div class="card"><h3>Trạng thái chờ ≠ session</h3><p class="small"><code>loadSession</code> không đọc bảng <code>mfa_challenges</code>. Đặt giá trị cookie <code>mfa</code> vào <code>sid</code> hay gọi thẳng <code>POST /login/mfa</code> đều không đăng nhập được.</p></div>
+  </div>
+  <div class="notes">Bản cũ gọi createSession ngay khi password đúng. Nay nhánh MFA chuyển hướng trước bước đó. Mã TOTP chấp nhận lệch một bước 30 giây để bù lệch đồng hồ điện thoại.</div>
+</section>
+
+<!-- B8. Mã khôi phục, xác thực lại, API -->
+<section class="slide">
+  <div class="kicker">Bài 2 · mã khôi phục, xác thực lại, bản API</div>
+  <h2>Thao tác nhạy cảm phải chứng minh lại cả hai yếu tố</h2>
+  <div class="grid2">
+    <table>
+      <tr><th>Thao tác</th><th>Cần</th><th>Kết quả</th></tr>
+      <tr><td class="k">Thay thiết bị</td><td>password + mã</td><td>Secret mới chờ xác nhận</td></tr>
+      <tr><td class="k">Tạo lại mã khôi phục</td><td>password + mã</td><td>10 mã mới, mã cũ hết hiệu lực</td></tr>
+      <tr><td class="k">Tắt MFA</td><td>password + mã</td><td>Xóa secret, mã khôi phục; hủy session khác</td></tr>
+      <tr><td class="k">Sai</td><td colspan="2"><code>REAUTH_FAILED</code>; 5 lần / 15 phút rồi 429</td></tr>
+    </table>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="card"><h3>Mã khôi phục</h3><p class="small">Dạng <code>XXXXX-XXXXX</code> (50 bit), không phân biệt hoa thường. Dùng thay mã 6 số khi mất điện thoại, mỗi mã một lần. Password sai thì không kiểm tra mã nên không tiêu thụ mã khôi phục.</p></div>
+      <div class="card tint"><h3>Đóng đường vòng qua bản API</h3><p class="small">Hai bản chung bảng users. <code>POST /api/auth/login</code> trả <code>MFA_REQUIRED</code> cho tài khoản bật MFA, <code>requireAuth</code> từ chối token của họ. API thêm RBAC; ghi món chỉ admin vì ABAC chỉ có ở SSR.</p></div>
+    </div>
+  </div>
+  <div class="notes">Nếu không chặn ở API, người biết password vẫn lấy được JWT qua SPA mà không cần mã, và Viewer vẫn CRUD được qua API. "Mã" ở bảng là mã TOTP hoặc một mã khôi phục.</div>
+</section>
+
+<!-- B9. Nghiệm thu Bài 2 -->
+<section class="slide">
+  <div class="kicker">Bài 2 · nghiệm thu · npm run acceptance</div>
+  <h2>205 / 205 PASS, trong đó 77 dòng của Bài 2</h2>
+  <div class="grid2">
+    <pre style="font-size:13px"><span class="pass">PASS</span> Viewer: GET /admin/dishes -> 200
+<span class="pass">PASS</span> Viewer: POST tạo món -> 403
+<span class="pass">PASS</span> Editor: món mới có chefId của tài khoản
+     (bỏ qua chefId giả) và status draft
+<span class="pass">PASS</span> Editor: DELETE món của mình -> 403
+<span class="pass">PASS</span> Editor A: PATCH món của B -> 403
+<span class="pass">PASS</span> Editor A: PATCH món published của A -> 403
+<span class="pass">PASS</span> Đổi status giữa chừng: editor gửi -> 403
+<span class="pass">PASS</span> Công khai: GET món draft -> 404
+<span class="pass">PASS</span> Đăng nhập MFA: chưa có sid, có cookie mfa
+<span class="pass">PASS</span> Dùng lại mã TOTP đã dùng -> INVALID_MFA_CODE
+<span class="pass">PASS</span> Mã khôi phục: dùng lại -> INVALID_MFA_CODE
+<span class="pass">PASS</span> Giới hạn thử: lần 5 -> /login?mfaFailed=1
+<span class="pass">PASS</span> Tắt MFA: sai password -> REAUTH_FAILED
+<span class="pass">PASS</span> log không chứa TOTP secret / mã khôi phục
+<span class="pass">205 PASS, 0 FAIL</span></pre>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="grid3" style="gap:12px">
+        <div class="stat"><div class="v">23</div><div class="l">RBAC</div></div>
+        <div class="stat"><div class="v">19</div><div class="l">ABAC</div></div>
+        <div class="stat"><div class="v">35</div><div class="l">MFA</div></div>
+      </div>
+      <div class="card"><h3>Cách chạy</h3><p class="small">Script tạo tài khoản <code>@acceptance.test</code> với role, <code>chefId</code> và món có nhãn <code>[nghiệm thu Bài 2]</code> trực tiếp trong DB, xóa khi xong. Mã TOTP sinh từ secret đọc trên trang thiết lập, như một ứng dụng Authenticator.</p></div>
+      <div class="card"><h3>Kiểm thử khác</h3><p class="small">Unit test SSR 20 (thêm <code>policy.test.js</code>, <code>mfa.test.js</code>). API: 87 unit, 88 nghiệm thu auth, 74 nghiệm thu CRUD, đều PASS.</p></div>
+    </div>
+  </div>
+  <div class="notes">Mỗi dòng của hai bảng nghiệm thu Bài 2 trong deck có ít nhất một dòng PASS tương ứng; các dòng đối chiếu cả bản ghi DB (chefId, status, usedAt, mfaEnabled) chứ không chỉ status HTTP.</div>
+</section>
+
+<!-- B10. Lỗi phát hiện khi làm Bài 2 -->
+<section class="slide">
+  <div class="kicker">Bài 2 · lỗi phát hiện khi làm</div>
+  <h2>Những chỗ dễ sai khi thêm phân quyền</h2>
+  <table>
+    <tr><th>Lỗi</th><th>Cách phát hiện</th><th>Sau khi sửa</th></tr>
+    <tr><td class="k">Món draft hiện trên thực đơn</td><td>Đọc lại code: <code>/dishes</code> và SQL xếp hạng không lọc <code>status</code></td><td>Thêm điều kiện ở cả Prisma và SQL; dòng nghiệm thu tìm món draft</td></tr>
+    <tr><td class="k">Cột mới làm thực đơn trống</td><td>Mặc định <code>draft</code> áp cho cả 1.500 món cũ</td><td>Migration gán <code>published</code> lần đầu rồi đổi mặc định</td></tr>
+    <tr><td class="k">Kiểm tra rồi mới ghi</td><td>PATCH cũ đọc món rồi <code>update({ id })</code>: có khe hở giữa hai bước</td><td>Điều kiện ABAC nằm trong <code>updateMany</code>; dòng nghiệm thu đổi status giữa chừng</td></tr>
+    <tr><td class="k">API là đường vòng</td><td>Hai bản chung DB: login API không có bước MFA, viewer CRUD được</td><td><code>MFA_REQUIRED</code>, RBAC ở API, ghi món chỉ admin</td></tr>
+    <tr><td class="k">Nghiệm thu API Bài 1 hỏng</td><td>Script dùng tài khoản viewer để CRUD đầu bếp → 403 sau RBAC</td><td>Thêm dòng viewer bị 403, rồi cấp admin qua DB; 88 PASS</td></tr>
+  </table>
+  <div class="notes">Lỗi đáng kể nhất là API làm đường vòng: nếu chỉ sửa bản SSR thì RBAC và MFA đều có thể bỏ qua bằng cách gọi bản API trên cùng database.</div>
+</section>
+
 <!-- 19. Giới hạn -->
 <section class="slide">
   <div class="kicker">Giới hạn đã công bố</div>
@@ -549,7 +774,9 @@ POST /api/auth/activate/resend  { email }
     <li>Cookie <code>SameSite=Strict</code> dựa trên việc web và api cùng site (localhost khác cổng vẫn cùng site). Triển khai khác site cần <code>REFRESH_COOKIE_SAMESITE=none</code> + HTTPS</li>
     <li>Không có thời hạn nhàn rỗi: tab để mở tự làm mới token tới hết 7 ngày (SSR: 2 giờ không thao tác)</li>
     <li><code>.env</code> đang dùng test key reCAPTCHA của Google; phải thay key thật trước khi chụp bằng chứng chặn bot</li>
-    <li>Chưa có phân quyền theo role và MFA: thuộc Bài 2 trên bản SSR</li>
+    <li><strong>Bài 2:</strong> ABAC và MFA chỉ cài trên bản SSR. Qua API, ghi món chỉ dành cho Admin; tài khoản bật MFA không đăng nhập được qua SPA (<code>MFA_REQUIRED</code>)</li>
+    <li><strong>Bài 2:</strong> đổi <code>MFA_ENC_KEY</code> làm secret đã lưu không giải mã được: người dùng vào bằng mã khôi phục rồi bật lại MFA</li>
+    <li><strong>Bài 2:</strong> vừa bật MFA mà đăng nhập lại ngay trong cùng 30 giây thì phải chờ mã kế tiếp (mã vừa dùng đã bị đánh dấu)</li>
   </ul>
   <div class="notes">Deck yêu cầu công bố trung thực: không chấp nhận bỏ qua cách xử lý JWT cũ mà không nêu. Mục đầu là đánh đổi chính của JWT không trạng thái.</div>
 </section>
@@ -562,10 +789,11 @@ POST /api/auth/activate/resend  { email }
     <li>Access token JWT 15 phút trong bộ nhớ, refresh token xoay vòng trong cookie HttpOnly</li>
     <li>Verify cố định HS256, kiểm tra exp, iss, aud; role và tokenVersion đọc từ DB mỗi request</li>
     <li>Đăng ký, OTP, CAPTCHA, bộ đếm sai, reset dùng lại nguyên logic Block 8, chung DB với SSR</li>
-    <li>Kiểm chứng bằng request trực tiếp và bản ghi DB: 85 PASS, không dựa vào giao diện</li>
+    <li>Bài 2: RBAC + ABAC ở một nơi (<code>policy.js</code>), điều kiện nằm trong câu UPDATE; MFA TOTP với trạng thái chờ không phải session</li>
+    <li>Kiểm chứng bằng request trực tiếp và bản ghi DB: API 88 PASS, SSR 205 PASS (77 dòng của Bài 2), không dựa vào giao diện</li>
   </ul>
   <p style="margin-top:auto;font-size:30px;font-weight:800">Cảm ơn thầy và các bạn. Q&amp;A</p>
-  <div class="notes">Quay lại câu hỏi đầu: request chứng minh người gọi bằng Bearer token đã ký; server verify chữ ký và hạn, tải user từ DB, rồi quyết định cho tiếp tục hay trả 401.</div>
+  <div class="notes">Quay lại câu hỏi đầu: request chứng minh người gọi bằng Bearer token đã ký; server verify chữ ký và hạn, tải user từ DB, rồi quyết định cho tiếp tục hay trả 401. Bài 2 trả lời câu hỏi tiếp theo: biết người gọi rồi thì được làm gì (RBAC, ABAC), và password đúng đã đủ chưa (MFA).</div>
 </section>
 
 </div></div>
@@ -589,7 +817,7 @@ POST /api/auth/activate/resend  { email }
   slides.forEach((s, i) => {
     const foot = document.createElement("div");
     foot.className = "foot";
-    foot.innerHTML = `<span>Lửa Hồng · Block 9 — Xác thực cho SPA bằng JWT</span><span>${i + 1} / ${slides.length}</span>`;
+    foot.innerHTML = `<span>Lửa Hồng · Block 9 — Xác thực cho SPA, phân quyền và MFA</span><span>${i + 1} / ${slides.length}</span>`;
     if (i > 0) s.appendChild(foot);
   });
 
