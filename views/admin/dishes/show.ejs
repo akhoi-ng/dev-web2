@@ -28,7 +28,8 @@
           <% } %>
         </dd>
       </div>
-      <div class="grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4"><dt class="text-stone-500">Trạng thái</dt><dd class="sm:col-span-2"><%= dish.available ? "Còn món" : "Hết món" %></dd></div>
+      <div class="grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4"><dt class="text-stone-500">Trạng thái đăng</dt><dd class="sm:col-span-2" data-dish-status="<%= dish.status %>"><%= DISH_STATUSES[dish.status] || dish.status %> (<%= dish.status %>)</dd></div>
+      <div class="grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4"><dt class="text-stone-500">Phục vụ</dt><dd class="sm:col-span-2"><%= dish.available ? "Còn món" : "Hết món" %></dd></div>
       <div class="grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4"><dt class="text-stone-500">Mô tả</dt><dd class="sm:col-span-2 text-stone-700"><%= dish.description || "—" %></dd></div>
       <div class="grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4"><dt class="text-stone-500">URL ảnh</dt><dd class="sm:col-span-2 break-all text-stone-500"><%= dish.imageUrl || "(dùng ảnh mặc định)" %></dd></div>
       <div class="grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4"><dt class="text-stone-500">Ngày tạo</dt><dd class="sm:col-span-2"><%= dish.createdAt.toLocaleString("vi-VN") %></dd></div>
@@ -53,10 +54,16 @@
     </div>
 
     <div class="flex flex-wrap gap-3 border-t border-stone-100 px-6 py-4">
-      <a href="/admin/dishes/<%= dish.id %>/edit" class="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Sửa</a>
-      <a href="/admin/dishes/<%= dish.id %>/delete" class="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700">Xóa</a>
+      <% if (canEditDish(dish)) { %>
+        <a href="/admin/dishes/<%= dish.id %>/edit" class="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Sửa</a>
+      <% } %>
+      <% if (can("delete")) { %>
+        <a href="/admin/dishes/<%= dish.id %>/delete" class="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700">Xóa</a>
+      <% } %>
       <a href="/admin/dishes" class="rounded-xl border border-stone-300 px-5 py-2.5 font-semibold hover:bg-stone-100">Quay lại danh sách</a>
-      <a href="/dishes/<%= dish.id %>" class="ml-auto rounded-xl px-5 py-2.5 font-medium text-stone-500 hover:text-brand-700">Xem trang khách →</a>
+      <% if (dish.status === "published") { %>
+        <a href="/dishes/<%= dish.id %>" class="ml-auto rounded-xl px-5 py-2.5 font-medium text-stone-500 hover:text-brand-700">Xem trang khách →</a>
+      <% } %>
     </div>
   </div>
 </div>

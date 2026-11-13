@@ -1,0 +1,23 @@
+<%- include("../partials/header") %>
+<% const input = "mt-1 w-full rounded-xl border border-stone-300 px-4 py-2.5 text-center font-mono text-lg tracking-widest focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"; %>
+
+<div class="mx-auto max-w-md">
+  <%- include("../partials/page-heading", { heading: "Xác thực hai bước", subheading: "Mật khẩu đúng. Nhập mã từ ứng dụng Authenticator để hoàn tất đăng nhập." }) %>
+  <%- include("../partials/auth-alert", { errors, code, notice: null }) %>
+
+  <form method="POST" action="/login/mfa" class="space-y-5 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8" data-mfa-step>
+    <%- include("../partials/csrf") %>
+    <div>
+      <label for="code" class="text-sm font-semibold">Mã 6 chữ số hoặc mã khôi phục</label>
+      <input id="code" name="code" type="text" inputmode="text" autocomplete="one-time-code" maxlength="20" required autofocus class="<%= input %>" placeholder="123456">
+      <p class="mt-2 text-xs text-stone-500">
+        Mã đổi mỗi 30 giây và chỉ dùng được một lần. Mất điện thoại thì nhập một mã khôi phục (dạng XXXXX-XXXXX);
+        mỗi mã khôi phục cũng chỉ dùng một lần. Sai <%= policy.mfa.maxAttempts %> lần phải đăng nhập lại.
+      </p>
+    </div>
+    <button type="submit" class="w-full rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white hover:bg-brand-700">Xác nhận</button>
+    <p class="text-center text-sm text-stone-500"><a href="/login" class="font-semibold text-brand-700 hover:underline">Đăng nhập bằng tài khoản khác</a></p>
+  </form>
+</div>
+
+<%- include("../partials/footer") %>

@@ -221,6 +221,11 @@ router.post(
       // Chỉ trả sau khi password đúng, nên không lộ tài khoản; không có accessToken
       return fail(res, "ACCOUNT_NOT_ACTIVATED", "Tài khoản chưa kích hoạt. Nhập mã OTP đã gửi qua email để kích hoạt.");
     }
+    // Block 9 Bài 2: MFA chỉ cài trên bản SSR. Tài khoản đã bật MFA không nhận token từ API,
+    // nếu không thì đăng nhập qua SPA sẽ bỏ qua được bước nhập mã.
+    if (result.user.mfaEnabled) {
+      return fail(res, "MFA_REQUIRED", "Tài khoản đã bật xác thực hai bước. Hãy đăng nhập trên bản SSR.");
+    }
 
     ok(res, await issueTokens(res, result.user));
   })

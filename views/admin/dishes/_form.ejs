@@ -38,18 +38,37 @@
     <p class="mt-1 text-xs text-stone-500">Để trống sẽ dùng ảnh mặc định.</p>
   </div>
 
-  <div>
-    <label for="chefId" class="text-sm font-semibold">Đầu bếp phụ trách</label>
-    <select id="chefId" name="chefId" class="<%= input %> bg-white">
-      <option value="">— Chưa phân công —</option>
-      <% chefs.forEach(function (c) { %>
-        <option value="<%= c.id %>" <%= values.chefId === String(c.id) ? "selected" : "" %>><%= c.name %> · <%= c.specialty %></option>
-      <% }) %>
-    </select>
-    <% if (chefs.length === 0) { %>
-      <p class="mt-1 text-xs text-stone-500">Chưa có đầu bếp. <a href="/admin/chefs/new" class="text-brand-700 hover:underline">Thêm đầu bếp</a></p>
-    <% } %>
+  <%# Block 9 Bài 2: chỉ Admin thấy và gửi được đầu bếp phụ trách, trạng thái. Server cũng bỏ qua
+      hai trường này nếu người gửi không phải Admin (ẩn ô chọn chỉ là giao diện). %>
+  <% if (canAssignDish()) { %>
+  <div class="grid gap-5 sm:grid-cols-2">
+    <div>
+      <label for="chefId" class="text-sm font-semibold">Đầu bếp phụ trách</label>
+      <select id="chefId" name="chefId" class="<%= input %> bg-white">
+        <option value="">— Chưa phân công —</option>
+        <% chefs.forEach(function (c) { %>
+          <option value="<%= c.id %>" <%= values.chefId === String(c.id) ? "selected" : "" %>><%= c.name %> · <%= c.specialty %></option>
+        <% }) %>
+      </select>
+      <% if (chefs.length === 0) { %>
+        <p class="mt-1 text-xs text-stone-500">Chưa có đầu bếp. <a href="/admin/chefs/new" class="text-brand-700 hover:underline">Thêm đầu bếp</a></p>
+      <% } %>
+    </div>
+    <div>
+      <label for="status" class="text-sm font-semibold">Trạng thái</label>
+      <select id="status" name="status" class="<%= input %> bg-white">
+        <% Object.keys(DISH_STATUSES).forEach(function (s) { %>
+          <option value="<%= s %>" <%= values.status === s ? "selected" : "" %>><%= DISH_STATUSES[s] %> (<%= s %>)</option>
+        <% }) %>
+      </select>
+      <p class="mt-1 text-xs text-stone-500">Chỉ món đã đăng (published) hiện trên thực đơn.</p>
+    </div>
   </div>
+  <% } else { %>
+    <p class="rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-600" data-dish-owner>
+      Món thuộc đầu bếp bạn phụ trách và ở trạng thái <strong>nháp (draft)</strong>. Chỉ quản trị viên đổi được đầu bếp và đăng món.
+    </p>
+  <% } %>
 
   <fieldset>
     <legend class="text-sm font-semibold">Công thức (nguyên liệu cho 1 phần ăn)</legend>

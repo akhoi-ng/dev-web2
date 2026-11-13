@@ -1,8 +1,9 @@
 <%
   const path = locals.currentPath || "";
   const isAdmin = path.startsWith("/admin");
-  // Link "Quản trị" chỉ hiện cho khách (dẫn tới đăng nhập) và tài khoản admin
-  const canAdmin = !locals.currentUser || currentUser.role === "admin";
+  // Block 9 Bài 2: mọi role (viewer, editor, admin) đều vào được trang quản trị (viewer chỉ đọc);
+  // khách bấm vào thì được dẫn tới đăng nhập
+  const canAdmin = true;
   const adminLinks = [
     { href: "/admin/dishes", label: "Món ăn" },
     { href: "/admin/chefs", label: "Đầu bếp" },
@@ -88,7 +89,8 @@
             <% } %>
             <div class="my-2 border-t border-stone-100"></div>
             <% if (locals.currentUser) { %>
-              <span class="truncate px-3 py-1 text-xs text-stone-500"><%= currentUser.email %></span>
+              <span class="truncate px-3 py-1 text-xs text-stone-500"><%= currentUser.email %> · <%= currentUser.role %></span>
+              <a href="/account/security" class="flex min-h-11 items-center rounded-xl px-3 hover:bg-brand-50 hover:text-brand-700">Bảo mật (MFA)</a>
               <form method="POST" action="/logout">
                 <%- include("csrf") %>
                 <button type="submit" class="flex min-h-11 w-full items-center rounded-xl px-3 text-left hover:bg-brand-50 hover:text-brand-700">Đăng xuất</button>
@@ -126,7 +128,7 @@
 
         <!-- Tài khoản: đăng xuất là form POST (không phải link GET), kèm CSRF token -->
         <% if (locals.currentUser) { %>
-          <span class="max-w-48 truncate text-sm text-stone-500" title="<%= currentUser.email %>"><%= currentUser.email %></span>
+          <a href="/account/security" class="max-w-56 truncate text-sm text-stone-500 hover:text-brand-700" title="Bảo mật tài khoản (MFA) · <%= currentUser.email %>"><%= currentUser.email %> · <span data-current-role><%= currentUser.role %></span></a>
           <form method="POST" action="/logout">
             <%- include("csrf") %>
             <button type="submit" class="rounded-full border border-stone-300 px-4 py-1.5 text-sm font-semibold hover:bg-stone-100">Đăng xuất</button>

@@ -13,6 +13,7 @@ async function main() {
 
   // Xóa theo thứ tự: bảng nối trước, rồi tới các bảng chính
   await prisma.booking.deleteMany();
+  // users.chefId tham chiếu chefs (SET NULL khi xóa); seedUser() gắn lại editor với đầu bếp mới
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
   await prisma.chef.deleteMany();
@@ -30,7 +31,8 @@ async function main() {
   const ingredientIds = Object.fromEntries(Object.entries(ingredients).map(([key, i]) => [key, ingredientIdByName.get(i.name)]));
 
   await prisma.dish.createMany({
-    data: dishes.map(({ chef, recipe, ...dish }) => ({ ...dish, chefId: chefIds[chef] })),
+    // Món mẫu đều đã đăng; seedUser() chuyển vài món của đầu bếp A, B sang draft để thử ABAC
+    data: dishes.map(({ chef, recipe, ...dish }) => ({ ...dish, status: "published", chefId: chefIds[chef] })),
   });
   const dishIds = await idsByName(prisma.dish);
 

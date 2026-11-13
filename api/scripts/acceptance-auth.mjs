@@ -299,8 +299,18 @@ async function jwtAndCrud(account) {
     check(`chưa đăng nhập ${m} ${p} -> 401 UNAUTHENTICATED`, x.status === 401 && code(x) === "UNAUTHENTICATED", `${x.status} ${code(x)}`);
   }
 
+  // Block 9 Bài 2: tài khoản mới đăng ký là viewer -> đọc được, ghi bị 403 (token vẫn giữ)
+  let x = await call("GET", "/api/chefs", { token });
+  check("viewer: GET /api/chefs -> 200 ok", x.status === 200 && x.json?.ok === true, `${x.status}`);
+  x = await call("POST", "/api/chefs", { token, body: { name: `Viewer tạo ${RUN}`, specialty: "x" } });
+  check("viewer: POST /api/chefs -> 403 FORBIDDEN", x.status === 403 && code(x) === "FORBIDDEN", `${x.status} ${code(x)}`);
+  x = await call("POST", "/api/dishes", { token, body: { name: `Viewer tạo ${RUN}`, price: 1000 } });
+  check("viewer: POST /api/dishes -> 403 FORBIDDEN", x.status === 403 && code(x) === "FORBIDDEN", `${x.status} ${code(x)}`);
+  // Admin cấp quyền (mô phỏng bằng DB): role đọc từ DB ở mỗi request nên token đang có dùng được ngay
+  await prisma.user.update({ where: { email: account.email }, data: { role: "admin" } });
+
   // Token hợp lệ: CRUD đầu bếp
-  let x = await call("POST", "/api/chefs", { token, body: { name: `Bếp nghiệm thu ${RUN}`, specialty: "Món Việt" } });
+  x = await call("POST", "/api/chefs", { token, body: { name: `Bếp nghiệm thu ${RUN}`, specialty: "Món Việt" } });
   const chefId = x.json?.data?.id;
   check("token hợp lệ: POST /api/chefs -> 200 ok", x.status === 200 && x.json?.ok === true, x.text);
   x = await call("PATCH", `/api/chefs/${chefId}`, { token, body: { specialty: "Món Âu", role: "admin" } });
@@ -331,7 +341,7 @@ async function jwtAndCrud(account) {
 
   // Đổi role trong DB: quyền đọc từ DB, không từ token
   const me = await call("GET", "/api/auth/me", { token });
-  check("/api/auth/me trả role đọc từ DB", me.json?.data?.role === "viewer" && me.json.data.email === account.email, me.text);
+  check("/api/auth/me trả role đọc từ DB (admin vừa cấp)", me.json?.data?.role === "admin" && me.json.data.email === account.email, me.text);
 
   x = await call("DELETE", `/api/chefs/${chefId}`, { token });
   check("token hợp lệ: DELETE -> 200 ok", x.json?.ok === true);

@@ -11,8 +11,10 @@ const bookingsRouter = require("./routes/bookings");
 const aboutRouter = require("./routes/about");
 const adminBookingsRouter = require("./routes/admin/bookings");
 const authRouter = require("./routes/auth");
-const { anonSession, loadSession, requireLogin, requireRole } = require("./auth/session");
+const accountRouter = require("./routes/account");
+const { anonSession, loadSession, requireLogin, requireRole, requirePermission } = require("./auth/session");
 const { csrfProtection, csrfToken } = require("./auth/csrf");
+const policy = require("./auth/policy");
 const {
   formatPrice,
   formatQty,
@@ -55,22 +57,32 @@ app.use((req, res, next) => {
 
 // Block 8 — xác thực. Thứ tự quan trọng:
 //  a. đọc cookie -> phiên ẩn danh (aid) -> khôi phục danh tính từ cookie sid (req.user)
-//  b. khu vực quản trị /admin/*: chưa đăng nhập -> 303 /login; đã đăng nhập nhưng không phải
-//     admin -> 403. Chạy trước kiểm tra CSRF để request lạ nhận đúng 303/403.
+//  b. khu vực quản trị /admin/*: chưa đăng nhập -> 303 /login; đã đăng nhập thì kiểm tra quyền
+//     theo thao tác (Block 9 Bài 2, src/auth/policy.js): viewer chỉ đọc, editor thêm tạo/sửa,
+//     admin thêm xóa -> không đủ quyền là 403. Chạy trước kiểm tra CSRF để request lạ nhận đúng
+//     303/403. Quyền theo thuộc tính của món (ABAC) kiểm tra trong src/routes/admin/dishes.js.
 //  c. mọi request đổi dữ liệu phải có CSRF token đúng
 app.use(cookieParser());
 app.use(anonSession);
 app.use(loadSession);
 app.use((req, res, next) => {
   res.locals.csrfToken = csrfToken(req); // cho form đăng xuất trên header của mọi trang, kể cả 403
+  // View chỉ ẩn/hiện nút theo cùng policy; quyết định thật vẫn ở server
+  res.locals.can = (action) => policy.can(req.user, action);
+  res.locals.canEditDish = (dish) => policy.canEditDish(req.user, dish);
+  res.locals.canCreateDish = () => policy.canCreateDish(req.user);
+  res.locals.canAssignDish = () => policy.canAssignDish(req.user);
+  res.locals.DISH_STATUSES = policy.DISH_STATUSES;
   next();
 });
-app.use("/admin", requireLogin, requireRole("admin"));
+app.use("/admin", requireLogin, requireRole(...policy.ROLES), requirePermission);
+app.use("/account", requireLogin);
 app.use(csrfProtection);
 
 // 3. Routes
 app.get("/", (req, res) => res.redirect("/dishes"));
 app.use("/", authRouter);
+app.use("/account", accountRouter);
 app.use("/dishes", dishesRouter);
 app.use("/admin/dishes", adminDishesRouter);
 app.use("/admin/chefs", adminChefsRouter);

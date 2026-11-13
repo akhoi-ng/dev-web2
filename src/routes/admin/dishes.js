@@ -12,9 +12,18 @@ const {
   dishToValues,
 } = require("../../utils/validators");
 const { isRankedSearch, hrefWith, hasFilters, formValues } = require("../../utils/dish-query");
+const { canAssignDish, canCreateDish, canEditDish, dishEditScope } = require("../../auth/policy");
+const { forbidden } = require("../../auth/session");
+
+// RBAC (đọc / tạo / sửa / xóa theo role) đã kiểm tra ở app.js cho mọi route /admin/*.
+// File này thêm ABAC: Editor chỉ tạo món cho đầu bếp của mình, chỉ sửa món draft của đầu bếp
+// mình; chefId và status chỉ Admin được đổi. chefId của Editor lấy từ tài khoản (req.user, đọc
+// từ DB), không bao giờ từ form.
 
 const router = express.Router();
 const notFound = (res) => res.status(404).render("errors/404");
+const CANNOT_CREATE = "Tài khoản editor chưa được gắn với đầu bếp nào nên chưa thêm được món. Liên hệ quản trị viên.";
+const CANNOT_EDIT = "Editor chỉ sửa được món ở trạng thái nháp (draft) của đầu bếp mình phụ trách.";
 
 // Số dòng mỗi trang trong bảng quản trị
 const PAGE_SIZE = 10;
@@ -27,6 +36,7 @@ const emptyValues = {
   imageUrl: "",
   available: true,
   chefId: "",
+  status: "draft",
   ingredients: {},
 };
 
@@ -86,6 +96,7 @@ router.get(
 router.get(
   "/new",
   asyncHandler(async (req, res) => {
+    if (!canCreateDish(req.user)) return forbidden(res, CANNOT_CREATE);
     const options = await loadFormOptions();
     res.render("admin/dishes/new", {
       title: "Thêm món ăn",
@@ -101,8 +112,10 @@ router.get(
 router.post(
   "/",
   asyncHandler(async (req, res) => {
+    if (!canCreateDish(req.user)) return forbidden(res, CANNOT_CREATE);
+    const canAssign = canAssignDish(req.user);
     const options = await loadFormOptions();
-    const { values, errors, data, recipe } = validateDish(req.body, options);
+    const { values, errors, data, recipe } = validateDish(req.body, { ...options, canAssign });
     if (errors.length > 0) {
       return res.status(400).render("admin/dishes/new", {
         title: "Thêm món ăn",
@@ -113,6 +126,11 @@ router.post(
       });
     }
 
+    // Editor: món mới thuộc đầu bếp của tài khoản và luôn là draft (body.chefId/status bị bỏ qua)
+    if (!canAssign) {
+      data.chefId = req.user.chefId;
+      data.status = "draft";
+    }
     const created = await prisma.dish.create({
       data: { ...data, ingredients: { create: recipe } },
     });
@@ -143,6 +161,7 @@ router.get(
 
     const dish = await prisma.dish.findUnique({ where: { id }, include: { ingredients: true } });
     if (!dish) return notFound(res);
+    if (!canEditDish(req.user, dish)) return forbidden(res, CANNOT_EDIT);
 
     const options = await loadFormOptions();
     res.render("admin/dishes/edit", {
@@ -165,9 +184,12 @@ router.patch(
 
     const dish = await prisma.dish.findUnique({ where: { id } });
     if (!dish) return notFound(res);
+    // Kiểm tra sớm để không hiện lỗi validate cho món không được sửa; điều kiện thật nằm ở UPDATE
+    const scope = dishEditScope(req.user);
+    if (!scope || !canEditDish(req.user, dish)) return forbidden(res, CANNOT_EDIT);
 
     const options = await loadFormOptions();
-    const { values, errors, data, recipe } = validateDish(req.body, options);
+    const { values, errors, data, recipe } = validateDish(req.body, { ...options, canAssign: canAssignDish(req.user) });
     if (errors.length > 0) {
       return res.status(400).render("admin/dishes/edit", {
         title: "Sửa món ăn",
@@ -179,15 +201,19 @@ router.patch(
       });
     }
 
-    try {
-      // Thay toàn bộ công thức cũ bằng công thức mới trong cùng một lệnh update
-      await prisma.dish.update({
-        where: { id },
-        data: { ...data, ingredients: { deleteMany: {}, create: recipe } },
-      });
-    } catch (err) {
-      if (isNotFoundError(err)) return notFound(res);
-      throw err;
+    // Điều kiện ABAC (scope) nằm trong WHERE của câu UPDATE: món bị đổi status / chefId giữa lúc
+    // mở form và lúc gửi thì UPDATE không khớp dòng nào -> 403, công thức cũng không bị thay.
+    // Chạy trong transaction để công thức chỉ thay khi UPDATE món thành công.
+    const updated = await prisma.$transaction(async (tx) => {
+      const r = await tx.dish.updateMany({ where: { id, ...scope }, data });
+      if (r.count !== 1) return false;
+      await tx.dishIngredient.deleteMany({ where: { dishId: id } });
+      if (recipe.length) await tx.dishIngredient.createMany({ data: recipe.map((row) => ({ ...row, dishId: id })) });
+      return true;
+    });
+    if (!updated) {
+      const still = await prisma.dish.findUnique({ where: { id }, select: { id: true } });
+      return still ? forbidden(res, CANNOT_EDIT) : notFound(res);
     }
     res.redirect(303, "/admin/dishes/" + id);
   })

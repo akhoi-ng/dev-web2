@@ -1,0 +1,64 @@
+<%- include("../partials/header") %>
+<%
+  const input = "mt-1 w-full rounded-xl border border-stone-300 px-4 py-2.5 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200";
+  const card = "rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8";
+%>
+
+<div class="mx-auto max-w-2xl space-y-6">
+  <%- include("../partials/page-heading", { heading: "Bảo mật tài khoản", subheading: account.email + " · role " + account.role }) %>
+  <%- include("../partials/auth-alert", { errors, code, notice }) %>
+
+  <section class="<%= card %>" data-mfa-status="<%= account.mfaEnabled ? 'enabled' : 'disabled' %>">
+    <h2 class="text-lg font-bold">Xác thực hai bước (MFA)</h2>
+    <% if (account.mfaEnabled) { %>
+      <p class="mt-2 text-sm text-stone-600">
+        <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Đang bật</span>
+        Mỗi lần đăng nhập cần thêm mã 6 chữ số từ ứng dụng Authenticator. Còn <strong data-recovery-remaining><%= remaining %></strong> mã khôi phục chưa dùng.
+      </p>
+    <% } else { %>
+      <p class="mt-2 text-sm text-stone-600">
+        <span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-600">Đang tắt</span>
+        Bật MFA để mật khẩu bị lộ cũng chưa đủ đăng nhập. Cần một ứng dụng như Google Authenticator, Microsoft Authenticator hoặc 2FAS.
+      </p>
+      <div class="mt-5 flex flex-wrap gap-3">
+        <form method="POST" action="/account/mfa/setup">
+          <%- include("../partials/csrf") %>
+          <button type="submit" class="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Bật xác thực hai bước</button>
+        </form>
+        <% if (account.pending) { %>
+          <a href="/account/mfa/setup" class="rounded-xl border border-stone-300 px-5 py-2.5 font-semibold hover:bg-stone-100">Tiếp tục thiết lập đang dở</a>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+
+  <% if (account.mfaEnabled) { %>
+    <section class="<%= card %>">
+      <h2 class="text-lg font-bold">Thay đổi MFA</h2>
+      <p class="mt-1 text-sm text-stone-500">
+        Các thao tác dưới đây cần xác thực lại: nhập mật khẩu hiện tại và mã 6 chữ số (hoặc một mã khôi phục).
+        Sai <%= policy.mfa.reauthAttempts.limit %> lần trong <%= Math.round(policy.mfa.reauthAttempts.windowMs / 60000) %> phút sẽ bị tạm khóa.
+      </p>
+      <form method="POST" class="mt-5 space-y-4" data-mfa-reauth>
+        <%- include("../partials/csrf") %>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="password" class="text-sm font-semibold">Mật khẩu hiện tại</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required class="<%= input %>">
+          </div>
+          <div>
+            <label for="code" class="text-sm font-semibold">Mã xác thực / mã khôi phục</label>
+            <input id="code" name="code" type="text" autocomplete="one-time-code" maxlength="20" required class="<%= input %> font-mono">
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-3 border-t border-stone-100 pt-4">
+          <button type="submit" formaction="/account/mfa/setup" class="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Thay thiết bị (secret mới)</button>
+          <button type="submit" formaction="/account/mfa/recovery-codes" class="rounded-xl border border-stone-300 px-5 py-2.5 font-semibold hover:bg-stone-100">Tạo lại mã khôi phục</button>
+          <button type="submit" formaction="/account/mfa/disable" class="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700">Tắt MFA</button>
+        </div>
+      </form>
+    </section>
+  <% } %>
+</div>
+
+<%- include("../partials/footer") %>

@@ -28,7 +28,8 @@ async function main() {
   const ingredientIds = Object.fromEntries(Object.entries(ingredients).map(([key, i]) => [key, ingredientIdByName.get(i.name)]));
 
   await prisma.dish.createMany({
-    data: dishes.map(({ chef, recipe, ...dish }) => ({ ...dish, chefId: chefIds[chef] })),
+    // Block 9 Bài 2: cột status mặc định là draft; món mẫu là món đã đăng (trang công khai chỉ hiện published)
+    data: dishes.map(({ chef, recipe, ...dish }) => ({ ...dish, status: "published", chefId: chefIds[chef] })),
   });
   const dishIds = await idsByName(prisma.dish);
 

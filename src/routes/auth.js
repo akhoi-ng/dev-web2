@@ -3,6 +3,7 @@
 //   GET/POST /activate          nhập OTP kích hoạt
 //   POST     /activate/resend   gửi lại OTP
 //   GET/POST /login             đăng nhập (rate limit, CAPTCHA sau 3 lần sai, khóa 5 phút sau 10 lần)
+//   GET/POST /login/mfa         bước 2 khi tài khoản bật MFA: mã TOTP hoặc mã khôi phục (Block 9 Bài 2)
 //   POST     /logout            đăng xuất
 //   GET/POST /forgot            quên mật khẩu
 //   GET/POST /reset             đặt mật khẩu mới bằng reset token
@@ -14,6 +15,7 @@ const { POLICY, recaptchaConfig } = require("../auth/config");
 const throttle = require("../auth/throttle");
 const { verifyCaptcha, CaptchaUnavailableError } = require("../auth/captcha");
 const service = require("../auth/service");
+const mfa = require("../auth/mfa");
 const { createSession, destroySession, homeFor } = require("../auth/session");
 const { normalizeEmail, emailError, validateRegistration, validateNewPassword, safeNext } = require("../auth/accounts");
 
@@ -178,6 +180,8 @@ const LOGIN_NOTICES = {
   activated: "Tài khoản đã được kích hoạt. Hãy đăng nhập.",
   reset: "Mật khẩu đã được đặt lại. Hãy đăng nhập bằng mật khẩu mới.",
   loggedOut: "Bạn đã đăng xuất.",
+  mfaExpired: "Phiên xác thực hai bước đã hết hạn hoặc không còn hiệu lực. Hãy đăng nhập lại.",
+  mfaFailed: "Bạn đã nhập sai mã xác thực quá nhiều lần. Hãy đăng nhập lại.",
 };
 
 router.get(
@@ -252,10 +256,80 @@ router.post(
       return res.render("auth/pending", { title: "Chưa kích hoạt", email: emailInput });
     }
 
+    // Block 9 Bài 2: tài khoản bật MFA chưa được cấp session; chuyển sang bước nhập mã
+    if (result.user.mfaEnabled) {
+      await mfa.startChallenge(res, result.user.id, next);
+      return res.redirect(303, "/login/mfa");
+    }
+
     await createSession(req, res, result.user.id);
-    // ?next= trỏ vào /admin mà tài khoản không phải admin thì về trang mặc định (tránh 403 ngay sau login)
-    const target = next && (result.user.role === "admin" || !next.toLowerCase().startsWith("/admin")) ? next : homeFor(result.user);
-    res.redirect(303, target);
+    // Mọi role đều đọc được /admin (Block 9 Bài 2), nên ?next= hợp lệ được giữ nguyên
+    res.redirect(303, next || homeFor(result.user));
+  })
+);
+
+// ───────────────────────── Xác thực hai bước (MFA) ─────────────────────────
+// Password đúng chỉ tạo trạng thái chờ (bảng mfa_challenges + cookie mfa), chưa có session.
+// Nhập đúng mã TOTP hoặc mã khôi phục mới gọi createSession (vẫn là chỗ duy nhất tạo session).
+
+function renderMfa(res, { errors = [], code = null, status = 200 } = {}) {
+  res.status(status).render("auth/mfa", { title: "Xác thực hai bước", errors, code, policy: POLICY });
+}
+
+router.get(
+  "/login/mfa",
+  asyncHandler(async (req, res) => {
+    if (req.user) return res.redirect(303, homeFor(req.user));
+    const challenge = await mfa.findChallenge(req);
+    if (!challenge) {
+      mfa.clearChallengeCookie(res);
+      return res.redirect(303, "/login?mfaExpired=1");
+    }
+    renderMfa(res);
+  })
+);
+
+router.post(
+  "/login/mfa",
+  asyncHandler(async (req, res) => {
+    if (await ipLimited(req, res, "mfa", POLICY.rate.mfaIp, "Quá nhiều lần nhập mã từ địa chỉ này.")) return;
+    const challenge = await mfa.findChallenge(req);
+    if (!challenge) {
+      mfa.clearChallengeCookie(res);
+      return res.redirect(303, "/login?mfaExpired=1");
+    }
+    const user = challenge.user;
+
+    // Giới hạn theo tài khoản (cộng dồn qua nhiều lần đăng nhập lại): biết password vẫn không dò được mã
+    const perUser = await throttle.hit(`mfa:user:${user.id}`, POLICY.mfa.userAttempts);
+    if (!perUser.allowed) return tooMany(res, perUser.retryAfterSec, "Nhập mã xác thực quá nhiều lần. Tạm khóa bước xác thực hai bước.");
+
+    // Giữ lượt thử trước khi kiểm tra mã: request song song không vượt quá số lượt
+    const used = await mfa.takeAttempt(challenge);
+    if (used === null) {
+      mfa.clearChallengeCookie(res);
+      return res.redirect(303, "/login?mfaFailed=1");
+    }
+
+    const result = await mfa.verifyCode(user, req.body.code);
+    if (!result.ok) {
+      if (used >= POLICY.mfa.maxAttempts) {
+        await mfa.endChallenge(challenge);
+        mfa.clearChallengeCookie(res);
+        return res.redirect(303, "/login?mfaFailed=1");
+      }
+      return renderMfa(res, {
+        errors: [`Mã xác thực không đúng, đã hết hạn hoặc đã được dùng. Còn ${POLICY.mfa.maxAttempts - used} lần thử.`],
+        code: "INVALID_MFA_CODE",
+      });
+    }
+
+    // Mã đúng: kết thúc lần chờ (chỉ một request xóa được), rồi mới tạo session
+    if (!(await mfa.endChallenge(challenge))) return res.redirect(303, "/login?mfaExpired=1");
+    mfa.clearChallengeCookie(res);
+    await throttle.clear(`mfa:user:${user.id}`);
+    await createSession(req, res, user.id);
+    res.redirect(303, safeNext(challenge.next) || homeFor(user));
   })
 );
 

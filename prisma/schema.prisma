@@ -16,6 +16,8 @@ model Dish {
   category    String?
   imageUrl    String?
   available   Boolean  @default(true)
+  // Block 9 Bài 2: draft | published. Trang công khai chỉ hiện published; Editor chỉ sửa được draft.
+  status      String   @default("draft")
   createdAt   DateTime @default(now())
 
   // Đầu bếp phụ trách (nhiều món - một đầu bếp). Xóa đầu bếp thì món còn lại, chefId = null.
@@ -24,6 +26,7 @@ model Dish {
   // Công thức: các nguyên liệu và định lượng (nhiều - nhiều qua bảng dish_ingredients)
   ingredients DishIngredient[]
 
+  @@index([status])
   @@map("dishes")
 }
 
@@ -35,6 +38,7 @@ model Chef {
   createdAt DateTime @default(now())
 
   dishes Dish[]
+  users  User[]
 
   @@map("chefs")
 }
@@ -86,24 +90,69 @@ model DishIngredient {
 // Tài khoản. `email` là bản chuẩn hóa (cắt khoảng trắng, chữ thường) dùng để so sánh và là khóa
 // duy nhất; `emailInput` là bản người dùng gõ, chỉ để hiển thị. Không bao giờ lưu password gốc.
 model User {
-  id              Int       @id @default(autoincrement())
-  email           String    @unique
-  emailInput      String
-  passwordHash    String // Argon2id, chuỗi PHC có thuật toán, tham số, salt
-  role            String    @default("viewer") // server gán; form đăng ký không đổi được
-  status          String    @default("pending") // pending | active
-  emailVerifiedAt DateTime?
+  id               Int       @id @default(autoincrement())
+  email            String    @unique
+  emailInput       String
+  passwordHash     String // Argon2id, chuỗi PHC có thuật toán, tham số, salt
+  role             String    @default("viewer") // server gán; form đăng ký không đổi được
+  status           String    @default("pending") // pending | active
+  emailVerifiedAt  DateTime?
   // Block 9: tăng khi đặt lại mật khẩu hoặc "đăng xuất mọi nơi". JWT mang số cũ bị API từ chối.
-  tokenVersion    Int       @default(0)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  tokenVersion     Int       @default(0)
+  // Block 9 Bài 2: Editor gắn với một đầu bếp; chỉ admin gán (seed / DB), form không đổi được.
+  chefId           Int?
+  // MFA (TOTP). Secret lưu đã mã hóa AES-256-GCM (MFA_ENC_KEY). mfaPendingSecret: secret mới đang
+  // chờ xác nhận mã, chỉ thay mfaSecret khi xác nhận đúng. mfaLastStep: bước 30 giây của mã TOTP
+  // dùng gần nhất, mã cùng bước hoặc cũ hơn bị từ chối (chống dùng lại).
+  mfaEnabled       Boolean   @default(false)
+  mfaSecret        String?
+  mfaPendingSecret String?
+  mfaLastStep      Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
+  chef           Chef?                @relation(fields: [chefId], references: [id], onDelete: SetNull)
   sessions       Session[]
   activation     ActivationChallenge?
   passwordResets PasswordReset[]
   refreshTokens  RefreshToken[]
+  recoveryCodes  RecoveryCode[]
+  mfaChallenges  MfaChallenge[]
 
   @@map("users")
+}
+
+// ───────────────────────── Block 9 Bài 2: MFA ─────────────────────────
+
+// Mã khôi phục: hiện một lần khi bật MFA, DB lưu HMAC; dùng xong ghi usedAt (mỗi mã một lần).
+model RecoveryCode {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+// Trạng thái chờ MFA: password đúng nhưng chưa nhập mã. Cookie `mfa` mang mã ngẫu nhiên, DB lưu
+// SHA-256. Không phải session: loadSession không đọc bảng này nên chưa vào được /admin.
+model MfaChallenge {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique
+  userId    Int
+  next      String?
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_challenges")
 }
 
 // OTP kích hoạt: một dòng cho mỗi tài khoản pending. Gửi lại thì ghi đè otpHash nên mã cũ mất

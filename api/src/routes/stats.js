@@ -11,12 +11,13 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const [byCategory, chefCount, overall, coverImages] = await Promise.all([
-      prisma.dish.groupBy({ by: ["category"], _count: { _all: true } }),
+      // Block 9 Bài 2: chỉ tính món đã đăng
+      prisma.dish.groupBy({ by: ["category"], where: { status: "published" }, _count: { _all: true } }),
       prisma.chef.count(),
-      prisma.dish.aggregate({ _count: { _all: true }, _min: { price: true } }),
+      prisma.dish.aggregate({ where: { status: "published" }, _count: { _all: true }, _min: { price: true } }),
       // Ảnh đầu tiên của mỗi danh mục làm ảnh bìa cho ô danh mục
       prisma.dish.findMany({
-        where: { imageUrl: { not: null } },
+        where: { status: "published", imageUrl: { not: null } },
         distinct: ["category"],
         orderBy: { id: "asc" },
         select: { category: true, imageUrl: true },

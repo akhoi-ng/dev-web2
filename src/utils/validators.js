@@ -1,4 +1,5 @@
 const { str, isHttpUrl, parseId, todayInVietnam, TIME_ZONE } = require("./helpers");
+const { DISH_STATUSES } = require("../auth/policy");
 
 const DISH_CATEGORIES = ["Khai vị", "Món chính", "Món phụ", "Tráng miệng", "Đồ uống"];
 const INGREDIENT_UNITS = ["kg", "gram", "lít", "ml", "bó", "quả", "ổ", "hộp", "gói"];
@@ -93,7 +94,7 @@ function parseDishSearch(query) {
  * dùng để kiểm tra chefId / ingredientId người dùng gửi lên có thật hay không.
  * Ngoài { values, errors, data } còn trả về `recipe`: [{ ingredientId, quantity }].
  */
-function validateDish(body, { chefs = [], ingredients = [] } = {}) {
+function validateDish(body, { chefs = [], ingredients = [], canAssign = true } = {}) {
   // Checkbox cùng tên: 1 ô -> chuỗi, nhiều ô -> mảng. Đưa về mảng chuỗi.
   const selectedIds = new Set(
     [].concat(body.ingredientIds || []).filter((v) => typeof v === "string")
@@ -106,7 +107,10 @@ function validateDish(body, { chefs = [], ingredients = [] } = {}) {
     category: str(body.category),
     imageUrl: str(body.imageUrl),
     available: body.available === "on",
-    chefId: str(body.chefId),
+    // Block 9 Bài 2: chefId, status chỉ Admin được đặt. Người khác (canAssign = false): bỏ qua hai
+    // trường này trong body, route tự gán từ tài khoản / giữ giá trị trong DB.
+    chefId: canAssign ? str(body.chefId) : "",
+    status: canAssign ? str(body.status) || "draft" : "draft",
     // { "<ingredientId>": { selected, quantity } } để vẽ lại bảng công thức
     ingredients: {},
   };
@@ -165,6 +169,8 @@ function validateDish(body, { chefs = [], ingredients = [] } = {}) {
     }
   }
 
+  if (canAssign && !Object.hasOwn(DISH_STATUSES, values.status)) errors.push("Trạng thái món không hợp lệ.");
+
   const data = {
     name: values.name,
     description: values.description || null,
@@ -172,8 +178,11 @@ function validateDish(body, { chefs = [], ingredients = [] } = {}) {
     category: values.category || null,
     imageUrl: values.imageUrl || null,
     available: values.available,
-    chefId,
   };
+  if (canAssign) {
+    data.chefId = chefId;
+    data.status = values.status;
+  }
 
   return { values, errors, data, recipe };
 }
@@ -306,6 +315,7 @@ const dishToValues = (d) => {
     imageUrl: d.imageUrl || "",
     available: d.available,
     chefId: d.chefId ? String(d.chefId) : "",
+    status: d.status || "draft",
     ingredients,
   };
 };

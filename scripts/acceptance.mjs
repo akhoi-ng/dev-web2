@@ -1,4 +1,5 @@
-// Nghiệm thu Block 8 bằng request trực tiếp (không qua giao diện), theo các bảng "Nghiệm thu" của deck.
+// Nghiệm thu Block 8 và Block 9 Bài 2 (RBAC / ABAC / MFA) bằng request trực tiếp (không qua giao
+// diện), theo các bảng "Nghiệm thu" của deck.
 // Script tự chạy server (cổng ACCEPT_PORT, mặc định 3999) để kiểm tra được cả bước khởi động lại.
 // Đọc DB để đối chiếu (hash, usedAt, attempts, session, bộ đếm) và đọc thư trong mail-outbox/.
 // reCAPTCHA: script chạy một siteverify GIẢ LẬP (RECAPTCHA_VERIFY_URL) để tự động kiểm tra logic
@@ -14,9 +15,17 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import prismaPkg from "@prisma/client";
+import otplib from "otplib";
 
 const { PrismaClient } = prismaPkg;
+const require = createRequire(import.meta.url);
+const { hashPassword } = require("../src/auth/crypto.js");
+// Ứng dụng Authenticator giả lập: sinh mã TOTP từ secret hiện trên trang thiết lập.
+// offsetSteps = 1: mã của bước 30 giây kế tiếp (server chấp nhận lệch 1 bước) để không phải chờ.
+const totpAt = (secret, offsetSteps = 0) =>
+  otplib.authenticator.clone({ epoch: Date.now() + offsetSteps * 30000 }).generate(secret);
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUTBOX = path.join(ROOT, "mail-outbox");
 const PORT = Number(process.env.ACCEPT_PORT) || 3999;
@@ -161,6 +170,8 @@ async function startServer() {
       RECAPTCHA_SECRET_KEY: fakeGoogle.secret,
       RECAPTCHA_VERIFY_URL: `http://localhost:${FAKE_GOOGLE_PORT}/siteverify`,
       RECAPTCHA_HOSTNAMES: "",
+      // Khóa mã hóa TOTP secret: dùng khóa trong .env nếu có, không thì khóa riêng cho lần chạy này
+      MFA_ENC_KEY: process.env.MFA_ENC_KEY || `acceptance-mfa-key-${RUN}`.padEnd(40, "x"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -382,7 +393,7 @@ async function loginLogoutCrud(account) {
   section("Đăng nhập, đăng xuất, CRUD");
   await resetThrottles();
   const before = await prisma.dish.count();
-  const dish = await prisma.dish.findFirst({ orderBy: { id: "asc" } });
+  const dish = await prisma.dish.findFirst({ where: { status: "published" }, orderBy: { id: "asc" } });
   const anon = new Browser();
 
   // Chưa đăng nhập: mọi route quản trị -> 303 /login, dữ liệu không đổi
@@ -429,18 +440,20 @@ async function loginLogoutCrud(account) {
   const sid1 = b.cookies.get("sid");
   check("login đúng: sid đổi so với trước đăng nhập", sid1 && sid1 !== "A".repeat(43));
   check("login đúng: cookie chỉ là mã ngẫu nhiên (không chứa email/userId)", !sid1.includes("@") && /^[A-Za-z0-9_-]{43}$/.test(sid1));
-  // Viewer: biết là ai nhưng không có quyền -> 403 ở mọi route quản trị, dữ liệu không đổi
-  for (const url of ["/admin/dishes", `/admin/dishes/${dish.id}/edit`, "/admin/chefs", "/admin/ingredients", "/admin/bookings"]) {
+  // Block 9 Bài 2: Viewer đọc được khu vực quản trị nhưng không tạo / sửa / xóa (chi tiết ở rbacAndAbac)
+  for (const url of ["/admin/dishes", `/admin/dishes/${dish.id}`, "/admin/chefs", "/admin/ingredients", "/admin/bookings"]) {
     r = await b.get(url);
-    check(`viewer: GET ${url} -> 403 FORBIDDEN`, r.status === 403 && errorCodeOf(r.text) === "FORBIDDEN", `${r.status}`);
+    check(`viewer: GET ${url} -> 200 (chỉ đọc)`, r.status === 200, `${r.status}`);
   }
+  r = await b.get(`/admin/dishes/${dish.id}/edit`);
+  check("viewer: GET form sửa -> 403 FORBIDDEN", r.status === 403 && errorCodeOf(r.text) === "FORBIDDEN", `${r.status}`);
   const viewerToken = csrfOf((await b.get("/dishes")).text);
   r = await b.post("/admin/dishes", { _csrf: viewerToken, name: `Viewer tạo ${RUN}`, price: "1000" });
   check("viewer: POST /admin/dishes (CSRF hợp lệ) -> 403", r.status === 403);
   r = await b.post(`/admin/dishes/${dish.id}?_method=DELETE`, { _csrf: viewerToken });
   check("viewer: DELETE /admin/dishes/:id -> 403", r.status === 403);
   check("viewer: dữ liệu không đổi", (await prisma.dish.count()) === before && (await prisma.dish.findUnique({ where: { id: dish.id } })) !== null);
-  check("viewer: header không có link Quản trị", !(await b.get("/dishes")).text.includes('href="/admin/dishes"'));
+  check("viewer: header có link Quản trị (đọc được)", (await b.get("/dishes")).text.includes('href="/admin/dishes"'));
 
   // Admin cấp quyền (mô phỏng bằng DB). Role đọc lại mỗi request nên có hiệu lực ngay với phiên đang mở.
   await prisma.user.update({ where: { email: account.email }, data: { role: "admin" } });
@@ -594,15 +607,17 @@ async function searchAndPaging(account) {
   const totalOf = (html) => Number((html.match(/data-result-total>(\d+)</) || [])[1] ?? NaN);
   const menuTotal = async (qs) => totalOf((await b.get("/dishes?" + qs)).text);
 
-  const all = await prisma.dish.count();
-  check("thực đơn: tổng số món đúng", (await menuTotal("")) === all);
+  // Block 9 Bài 2: thực đơn công khai chỉ tính món đã đăng
+  const PUBLISHED = { status: "published" };
+  const all = await prisma.dish.count({ where: PUBLISHED });
+  check("thực đơn: tổng số món đúng (chỉ món published)", (await menuTotal("")) === all);
   // Kỳ vọng tính bằng LIKE có escape (contains "%" của Prisma không escape, chính là lỗi đã sửa ở Block 7)
-  const percent = await prisma.dish.count({ where: { name: { contains: "\\%" } } });
+  const percent = await prisma.dish.count({ where: { ...PUBLISHED, name: { contains: "\\%" } } });
   check("basic: q=% là ký tự thường (không trả toàn bộ)", (await menuTotal("q=%25")) === percent, `${percent}`);
   const bun = await menuTotal("mode=fuzzy&q=b%C3%BAn");
   check("fuzzy: q=bun (không dấu) = q=bún", bun > 0 && (await menuTotal("mode=fuzzy&q=bun")) === bun, `${bun}`);
   check("fulltext: 'phở bò' có kết quả", (await menuTotal("mode=fulltext&q=ph%E1%BB%9F%20b%C3%B2")) > 0);
-  const adv = await prisma.dish.count({ where: { available: false, price: { lte: 80000 } } });
+  const adv = await prisma.dish.count({ where: { ...PUBLISHED, available: false, price: { lte: 80000 } } });
   check("advanced: available=false&maxPrice=80000", (await menuTotal("mode=advanced&available=false&maxPrice=80000")) === adv);
   let r = await b.get("/dishes?mode=advanced&minPrice=abc");
   check("advanced: minPrice=abc -> 200 + VALIDATION_FAILED", r.status === 200 && errorCodeOf(r.text) === "VALIDATION_FAILED");
@@ -616,6 +631,268 @@ async function searchAndPaging(account) {
   await login(b, account.email, account.password);
   r = await b.get("/admin/dishes?mode=fuzzy&q=carbonra&page=1");
   check("quản trị: tìm Gần đúng 'carbonra' ra Carbonara", r.status === 200 && /Carbonara/.test(r.text));
+}
+
+// ───────────────────── Block 9 Bài 2: RBAC, ABAC, MFA ─────────────────────
+
+const TEST_DISH_TAG = "[nghiệm thu Bài 2]";
+const mfaSecrets = []; // TOTP secret + mã khôi phục của lần chạy, để kiểm tra log không chứa
+const MFA_PASSWORD = `mat-khau-bai2-${RUN}`;
+
+// Bốn tài khoản active tạo thẳng trong DB (role, chefId chỉ admin / seed gán, không qua form) +
+// món thử: draft của A, published của A, draft của B
+async function createRoleAccounts() {
+  const [chefA, chefB] = await prisma.chef.findMany({ orderBy: { id: "asc" }, take: 2 });
+  const passwordHash = await hashPassword(MFA_PASSWORD);
+  const make = (name, role, chefId = null) => {
+    const email = `${name}-${RUN}@acceptance.test`;
+    return prisma.user.create({
+      data: { email, emailInput: email, passwordHash, role, chefId, status: "active", emailVerifiedAt: new Date() },
+    });
+  };
+  const users = {
+    viewer: await make("viewer", "viewer"),
+    editorA: await make("editor-a", "editor", chefA.id),
+    editorB: await make("editor-b", "editor", chefB.id),
+    editorNoChef: await make("editor-x", "editor"),
+    admin: await make("admin", "admin"),
+  };
+  const dish = (label, chef, status) =>
+    prisma.dish.create({ data: { name: `${label} ${TEST_DISH_TAG} ${RUN}`, price: 50000, chefId: chef.id, status } });
+  const dishes = {
+    draftA: await dish("Nháp A", chefA, "draft"),
+    publishedA: await dish("Đã đăng A", chefA, "published"),
+    draftB: await dish("Nháp B", chefB, "draft"),
+  };
+  return { users, dishes, chefA, chefB };
+}
+
+async function loginAs(user) {
+  const b = new Browser();
+  const r = await login(b, user.email, MFA_PASSWORD);
+  return { b, r };
+}
+
+// PATCH món qua form sửa; csrf lấy từ trang /dishes (form sửa có thể bị 403)
+async function patchDish(b, id, form) {
+  const token = csrfOf((await b.get("/dishes")).text);
+  return b.post(`/admin/dishes/${id}?_method=PATCH`, { _csrf: token, price: "50000", ...form });
+}
+
+async function rbacAndAbac({ users, dishes, chefA, chefB }) {
+  section("Block 9 Bài 2 — RBAC (Viewer / Editor / Admin)");
+  await resetThrottles();
+  const reload = (id) => prisma.dish.findUnique({ where: { id } });
+  const forbiddenPage = (r) => r.status === 403 && errorCodeOf(r.text) === "FORBIDDEN";
+
+  // Viewer: chỉ đọc
+  const { b: viewer } = await loginAs(users.viewer);
+  for (const url of ["/admin/dishes", `/admin/dishes/${dishes.draftA.id}`, "/admin/chefs", "/admin/ingredients", "/admin/bookings"]) {
+    check(`Viewer: GET ${url} -> 200`, (await viewer.get(url)).status === 200);
+  }
+  let r = await viewer.get("/admin/dishes");
+  check("Viewer: danh sách không có nút Thêm / Sửa / Xóa", !r.text.includes('href="/admin/dishes/new"') && !/\/admin\/dishes\/\d+\/(edit|delete)"/.test(r.text));
+  for (const url of ["/admin/dishes/new", `/admin/dishes/${dishes.draftA.id}/edit`, `/admin/dishes/${dishes.draftA.id}/delete`, "/admin/chefs/new"]) {
+    check(`Viewer: GET ${url} -> 403`, forbiddenPage(await viewer.get(url)));
+  }
+  const countBefore = await prisma.dish.count();
+  const vt = csrfOf((await viewer.get("/dishes")).text);
+  check("Viewer: POST tạo món -> 403", forbiddenPage(await viewer.post("/admin/dishes", { _csrf: vt, name: `Viewer ${TEST_DISH_TAG}`, price: "1000" })));
+  check("Viewer: PATCH sửa món -> 403", forbiddenPage(await patchDish(viewer, dishes.draftA.id, { name: "Viewer sửa" })));
+  check("Viewer: DELETE món -> 403", forbiddenPage(await viewer.post(`/admin/dishes/${dishes.draftA.id}?_method=DELETE`, { _csrf: vt })));
+  check("Viewer: PATCH trạng thái đặt bàn -> 403", forbiddenPage(await viewer.post(`/admin/bookings/1?_method=PATCH`, { _csrf: vt, status: "confirmed" })));
+  check("Viewer: dữ liệu không đổi", (await prisma.dish.count()) === countBefore && (await reload(dishes.draftA.id)).name === dishes.draftA.name);
+
+  // Editor: đọc, tạo, sửa; xóa bị chặn
+  const { b: editor, r: loginR } = await loginAs(users.editorA);
+  check("Editor: đăng nhập -> 303 /admin/dishes", loginR.status === 303 && loginR.location === "/admin/dishes", `${loginR.status} ${loginR.location}`);
+  check("Editor: GET form thêm -> 200, không có ô chọn đầu bếp / trạng thái", await (async () => {
+    const p = await editor.get("/admin/dishes/new");
+    return p.status === 200 && !p.text.includes('name="chefId"') && !p.text.includes('name="status"');
+  })());
+  // Gửi kèm chefId của đầu bếp B và status=published: server bỏ qua, gán theo tài khoản
+  const nt = csrfOf((await editor.get("/admin/dishes/new")).text);
+  r = await editor.post("/admin/dishes", { _csrf: nt, name: `Editor tạo ${TEST_DISH_TAG} ${RUN}`, price: "45000", chefId: String(chefB.id), status: "published" });
+  const createdByEditor = await prisma.dish.findFirst({ where: { name: `Editor tạo ${TEST_DISH_TAG} ${RUN}` } });
+  check("Editor: tạo món -> 303", r.status === 303 && Boolean(createdByEditor));
+  check("Editor: món mới có chefId của tài khoản (bỏ qua chefId giả) và status draft",
+    createdByEditor && createdByEditor.chefId === chefA.id && createdByEditor.status === "draft",
+    createdByEditor && `${createdByEditor.chefId}/${createdByEditor.status}`);
+  check("Editor: GET trang xác nhận xóa -> 403", forbiddenPage(await editor.get(`/admin/dishes/${dishes.draftA.id}/delete`)));
+  r = await editor.post(`/admin/dishes/${dishes.draftA.id}?_method=DELETE`, { _csrf: nt });
+  check("Editor: DELETE món của mình -> 403, món còn nguyên", forbiddenPage(r) && Boolean(await reload(dishes.draftA.id)));
+  check("Editor: DELETE đầu bếp -> 403", forbiddenPage(await editor.post(`/admin/chefs/${chefB.id}?_method=DELETE`, { _csrf: nt })));
+
+  // Editor chưa gắn đầu bếp: không thêm được món
+  const { b: noChef } = await loginAs(users.editorNoChef);
+  check("Editor chưa gắn đầu bếp: GET form thêm -> 403", forbiddenPage(await noChef.get("/admin/dishes/new")));
+
+  section("Block 9 Bài 2 — ABAC (Editor chỉ sửa món draft của đầu bếp mình)");
+  check("Editor A: GET sửa món draft của A -> 200", (await editor.get(`/admin/dishes/${dishes.draftA.id}/edit`)).status === 200);
+  r = await patchDish(editor, dishes.draftA.id, { name: `Nháp A đã sửa ${TEST_DISH_TAG} ${RUN}`, chefId: String(chefB.id), status: "published" });
+  let a = await reload(dishes.draftA.id);
+  check("Editor A: PATCH món draft của A -> 303, tên đổi", r.status === 303 && a.name.startsWith("Nháp A đã sửa"));
+  check("Editor A: PATCH kèm chefId / status giả -> chefId, status không đổi", a.chefId === chefA.id && a.status === "draft", `${a.chefId}/${a.status}`);
+
+  check("Editor A: GET sửa món draft của B -> 403", forbiddenPage(await editor.get(`/admin/dishes/${dishes.draftB.id}/edit`)));
+  r = await patchDish(editor, dishes.draftB.id, { name: "A sửa món B" });
+  check("Editor A: PATCH món của B -> 403, dữ liệu không đổi", forbiddenPage(r) && (await reload(dishes.draftB.id)).name === dishes.draftB.name);
+  check("Editor A: GET sửa món published của A -> 403", forbiddenPage(await editor.get(`/admin/dishes/${dishes.publishedA.id}/edit`)));
+  r = await patchDish(editor, dishes.publishedA.id, { name: "A sửa món đã đăng" });
+  check("Editor A: PATCH món published của A -> 403, dữ liệu không đổi", forbiddenPage(r) && (await reload(dishes.publishedA.id)).name === dishes.publishedA.name);
+
+  const { b: editorB } = await loginAs(users.editorB);
+  check("Editor B: GET sửa món draft của B -> 200", (await editorB.get(`/admin/dishes/${dishes.draftB.id}/edit`)).status === 200);
+  check("Editor B: GET sửa món draft của A -> 403", forbiddenPage(await editorB.get(`/admin/dishes/${dishes.draftA.id}/edit`)));
+
+  // Đổi status giữa lúc mở form và lúc gửi: editor mở form (200), admin đăng món, editor gửi -> 403
+  const formPage = await editor.get(`/admin/dishes/${dishes.draftA.id}/edit`);
+  check("Đổi status giữa chừng: editor mở form sửa -> 200", formPage.status === 200);
+  const { b: admin } = await loginAs(users.admin);
+  r = await patchDish(admin, dishes.draftA.id, { name: a.name, chefId: String(chefA.id), status: "published" });
+  check("Đổi status giữa chừng: admin PATCH status=published -> 303", r.status === 303 && (await reload(dishes.draftA.id)).status === "published");
+  r = await editor.post(`/admin/dishes/${dishes.draftA.id}?_method=PATCH`, { _csrf: csrfOf(formPage.text), name: "Gửi sau khi đã đăng", price: "50000" });
+  a = await reload(dishes.draftA.id);
+  check("Đổi status giữa chừng: editor gửi form đã mở -> 403, món không đổi", forbiddenPage(r) && a.name !== "Gửi sau khi đã đăng");
+
+  // Admin: đổi đầu bếp, trạng thái, xóa
+  r = await patchDish(admin, dishes.draftB.id, { name: dishes.draftB.name, chefId: String(chefA.id), status: "draft" });
+  check("Admin: PATCH đổi chefId -> 303, chefId mới", r.status === 303 && (await reload(dishes.draftB.id)).chefId === chefA.id);
+  const delPage = await admin.get(`/admin/dishes/${createdByEditor.id}/delete`);
+  r = await admin.post(`/admin/dishes/${createdByEditor.id}?_method=DELETE`, { _csrf: csrfOf(delPage.text) });
+  check("Admin: DELETE món -> 303, món bị xóa", r.status === 303 && !(await reload(createdByEditor.id)));
+
+  // Trang công khai chỉ hiện món đã đăng
+  const anon = new Browser();
+  check("Công khai: GET món draft -> 404", (await anon.get(`/dishes/${dishes.draftB.id}`)).status === 404);
+  check("Công khai: GET món published -> 200", (await anon.get(`/dishes/${dishes.publishedA.id}`)).status === 200);
+  r = await anon.get(`/dishes?q=${encodeURIComponent(`Nháp B ${TEST_DISH_TAG}`)}`);
+  check("Công khai: tìm theo tên món draft -> không có kết quả", !r.text.includes(`data-dish-id="${dishes.draftB.id}"`));
+  r = await anon.get(`/dishes?mode=fuzzy&q=${encodeURIComponent(`Nháp B nghiệm thu ${RUN}`)}`);
+  check("Công khai: tìm Gần đúng tên món draft -> không có kết quả", !r.text.includes(`data-dish-id="${dishes.draftB.id}"`));
+
+  // Role đọc lại từ DB mỗi request: hạ admin xuống viewer có hiệu lực ngay với phiên đang mở
+  await prisma.user.update({ where: { id: users.admin.id }, data: { role: "viewer" } });
+  check("Đổi role trong DB: admin -> viewer, GET form sửa -> 403 ngay", forbiddenPage(await admin.get(`/admin/dishes/${dishes.publishedA.id}/edit`)));
+  await prisma.user.update({ where: { id: users.admin.id }, data: { role: "admin" } });
+}
+
+async function mfaFlow({ users }) {
+  section("Block 9 Bài 2 — MFA (TOTP + mã khôi phục)");
+  await resetThrottles();
+  const user = users.admin;
+  const reloadUser = () => prisma.user.findUnique({ where: { id: user.id } });
+  const mfaCookie = (r) => r.setCookies.some((c) => c.startsWith("mfa=") && !/01 Jan 1970/.test(c));
+
+  // 1. Bật MFA: QR + secret nhập tay + xác nhận mã
+  const { b } = await loginAs(user);
+  let page = await b.get("/account/security");
+  check("Bảo mật: trang /account/security -> 200, MFA đang tắt", page.status === 200 && page.text.includes('data-mfa-status="disabled"'));
+  let r = await b.post("/account/mfa/setup", { _csrf: csrfOf(page.text) });
+  check("Bật MFA: POST setup -> 303 /account/mfa/setup", r.status === 303 && r.location === "/account/mfa/setup");
+  page = await b.get("/account/mfa/setup");
+  const secret = ((page.text.match(/data-mfa-secret>([^<]+)</) || [])[1] || "").replace(/\s+/g, "");
+  check("Bật MFA: trang có QR (data URL vẽ ở server) và secret nhập tay", page.text.includes('src="data:image/png;base64,') && /^[A-Z2-7]{16,}$/.test(secret));
+  check("Bật MFA: Cache-Control no-store", (page.headers.get("cache-control") || "").includes("no-store"));
+  let db = await reloadUser();
+  check("Bật MFA: chưa xác nhận mã thì mfaEnabled = false", db.mfaEnabled === false && Boolean(db.mfaPendingSecret));
+  check("Bật MFA: DB không lưu secret dạng rõ", !String(db.mfaPendingSecret).includes(secret));
+
+  const wrongCode = totpAt(secret) === "000000" ? "111111" : "000000";
+  r = await b.post("/account/mfa/confirm", { _csrf: csrfOf(page.text), code: wrongCode });
+  check("Bật MFA: mã sai -> INVALID_MFA_CODE, vẫn tắt", errorCodeOf(r.text) === "INVALID_MFA_CODE" && !(await reloadUser()).mfaEnabled);
+  r = await b.post("/account/mfa/confirm", { _csrf: csrfOf(page.text), code: totpAt(secret) });
+  const recovery = [...r.text.matchAll(/data-recovery-code>([A-Z0-9-]+)</g)].map((m) => m[1]);
+  mfaSecrets.push(secret, ...recovery);
+  db = await reloadUser();
+  check("Bật MFA: mã đúng -> mfaEnabled = true, hiện 10 mã khôi phục", r.status === 200 && db.mfaEnabled && recovery.length === 10);
+  const rows = await prisma.recoveryCode.findMany({ where: { userId: user.id } });
+  check("Mã khôi phục: DB lưu 10 hash, không lưu mã gốc", rows.length === 10 && rows.every((x) => /^[0-9a-f]{64}$/.test(x.codeHash) && !recovery.includes(x.codeHash)));
+  check("Bật MFA: DB không lưu secret dạng rõ", db.mfaSecret && !db.mfaSecret.includes(secret) && db.mfaPendingSecret === null);
+  // Phiên đang mở (đã có trước khi bật MFA) vẫn dùng được
+  check("Bật MFA: phiên hiện tại vẫn đăng nhập", (await b.get("/admin/dishes")).status === 200);
+
+  // 2. Đăng nhập: password đúng -> trạng thái chờ MFA, chưa có session
+  const p = new Browser();
+  r = await login(p, user.email, MFA_PASSWORD);
+  check("Đăng nhập MFA: password đúng -> 303 /login/mfa", r.status === 303 && r.location === "/login/mfa", `${r.status} ${r.location}`);
+  check("Đăng nhập MFA: chưa Set-Cookie sid, có cookie mfa", !sidOf(r) && mfaCookie(r));
+  r = await p.get("/admin/dishes");
+  check("Đăng nhập MFA: đang chờ mã thì /admin -> 303 /login", r.status === 303 && r.location.startsWith("/login"));
+  const mfaCookieValue = p.cookies.get("mfa");
+  check("Đăng nhập MFA: dùng cookie mfa làm sid -> không đăng nhập được", await (async () => {
+    const fake = new Browser();
+    fake.cookies.set("sid", mfaCookieValue);
+    return (await fake.get("/admin/dishes")).status === 303;
+  })());
+  // Gọi thẳng POST /login/mfa không qua password (không có trạng thái chờ)
+  const direct = new Browser();
+  const dp = await direct.get("/login");
+  r = await direct.post("/login/mfa", { _csrf: csrfOf(dp.text), code: totpAt(secret, 1) });
+  check("Bỏ qua bước password: POST /login/mfa không có trạng thái chờ -> 303 /login, không sid", r.status === 303 && r.location.startsWith("/login") && !sidOf(r));
+
+  r = await p.submit("/login/mfa", "/login/mfa", { code: wrongCode });
+  check("Đăng nhập MFA: mã sai -> INVALID_MFA_CODE, không sid", errorCodeOf(r.text) === "INVALID_MFA_CODE" && !sidOf(r));
+  const nextCode = totpAt(secret, 1);
+  r = await p.submit("/login/mfa", "/login/mfa", { code: nextCode });
+  check("Đăng nhập MFA: mã đúng -> 303 + Set-Cookie sid", r.status === 303 && Boolean(sidOf(r)), `${r.status}`);
+  check("Đăng nhập MFA: sau khi xong, cookie mfa bị xóa", !p.cookies.has("mfa"));
+  check("Đăng nhập MFA: vào /admin được", (await p.get("/admin/dishes")).status === 200);
+  check("Đăng nhập MFA: trạng thái chờ bị xóa khỏi DB", (await prisma.mfaChallenge.count({ where: { userId: user.id } })) === 0);
+
+  // 3. Chống dùng lại mã: cùng mã TOTP vừa dùng -> từ chối
+  const replay = new Browser();
+  await login(replay, user.email, MFA_PASSWORD);
+  r = await replay.submit("/login/mfa", "/login/mfa", { code: nextCode });
+  check("Dùng lại mã TOTP đã dùng -> INVALID_MFA_CODE, không sid", errorCodeOf(r.text) === "INVALID_MFA_CODE" && !sidOf(r));
+
+  // 4. Mã khôi phục: dùng được một lần
+  r = await replay.submit("/login/mfa", "/login/mfa", { code: recovery[0].toLowerCase() });
+  check("Mã khôi phục: đăng nhập được (không phân biệt hoa thường)", r.status === 303 && Boolean(sidOf(r)));
+  const used = await prisma.recoveryCode.count({ where: { userId: user.id, usedAt: { not: null } } });
+  check("Mã khôi phục: usedAt được ghi", used === 1);
+  const again = new Browser();
+  await login(again, user.email, MFA_PASSWORD);
+  r = await again.submit("/login/mfa", "/login/mfa", { code: recovery[0] });
+  check("Mã khôi phục: dùng lại -> INVALID_MFA_CODE", errorCodeOf(r.text) === "INVALID_MFA_CODE" && !sidOf(r));
+
+  // 5. Giới hạn thử: 5 lần sai trong một lần chờ -> hủy, phải đăng nhập lại
+  await resetThrottles();
+  const brute = new Browser();
+  await login(brute, user.email, MFA_PASSWORD);
+  const statuses = [];
+  for (let i = 0; i < 5; i++) {
+    r = await brute.submit("/login/mfa", "/login/mfa", { code: String(100000 + i) });
+    statuses.push(r.status === 303 ? r.location : errorCodeOf(r.text));
+  }
+  check("Giới hạn thử: 4 lần INVALID_MFA_CODE, lần 5 -> 303 /login?mfaFailed=1",
+    statuses.slice(0, 4).every((s) => s === "INVALID_MFA_CODE") && statuses[4] === "/login?mfaFailed=1", statuses.join(","));
+  r = await brute.post("/login/mfa", { _csrf: csrfOf((await brute.get("/login")).text), code: totpAt(secret, 1) });
+  check("Giới hạn thử: sau khi hủy, mã đúng cũng không vào được (phải đăng nhập lại)", r.status === 303 && r.location.startsWith("/login") && !sidOf(r));
+
+  // 6. Thay / tắt MFA cần xác thực lại
+  await resetThrottles();
+  page = await b.get("/account/security");
+  check("Bảo mật: MFA đang bật, còn 9 mã khôi phục", page.text.includes('data-mfa-status="enabled"') && page.text.includes("data-recovery-remaining>9<"));
+  r = await b.post("/account/mfa/setup", { _csrf: csrfOf(page.text) });
+  check("Thay MFA: không nhập password + mã -> REAUTH_FAILED", errorCodeOf(r.text) === "REAUTH_FAILED" && (await reloadUser()).mfaPendingSecret === null);
+  r = await b.post("/account/mfa/disable", { _csrf: csrfOf(page.text), password: "sai-mat-khau", code: recovery[1] });
+  check("Tắt MFA: sai password -> REAUTH_FAILED, vẫn bật", errorCodeOf(r.text) === "REAUTH_FAILED" && (await reloadUser()).mfaEnabled);
+  check("Tắt MFA: sai password thì mã khôi phục không bị tiêu thụ",
+    (await prisma.recoveryCode.count({ where: { userId: user.id, usedAt: null } })) === 9);
+  r = await b.post("/account/mfa/disable", { _csrf: csrfOf(page.text), password: MFA_PASSWORD, code: "000000" });
+  check("Tắt MFA: password đúng, mã sai -> REAUTH_FAILED, vẫn bật", errorCodeOf(r.text) === "REAUTH_FAILED" && (await reloadUser()).mfaEnabled);
+  r = await b.post("/account/mfa/recovery-codes", { _csrf: csrfOf(page.text), password: MFA_PASSWORD, code: recovery[1] });
+  const fresh = [...r.text.matchAll(/data-recovery-code>([A-Z0-9-]+)</g)].map((m) => m[1]);
+  check("Tạo lại mã khôi phục (xác thực lại) -> 10 mã mới, mã cũ hết hiệu lực",
+    fresh.length === 10 && !fresh.includes(recovery[2]) && (await prisma.recoveryCode.count({ where: { userId: user.id } })) === 10);
+  r = await b.post("/account/mfa/disable", { _csrf: csrfOf(page.text), password: MFA_PASSWORD, code: fresh[0] });
+  db = await reloadUser();
+  check("Tắt MFA: password + mã khôi phục đúng -> 303, đã tắt, xóa secret và mã", r.status === 303 && !db.mfaEnabled && db.mfaSecret === null &&
+    (await prisma.recoveryCode.count({ where: { userId: user.id } })) === 0);
+  r = await login(new Browser(), user.email, MFA_PASSWORD);
+  check("Tắt MFA: đăng nhập lại chỉ cần password", r.status === 303 && Boolean(sidOf(r)));
+  await resetThrottles();
 }
 
 async function codeReview() {
@@ -632,13 +909,16 @@ async function codeReview() {
   const leaked = secrets.filter((s) => serverLog.includes(s));
   check(`log server không chứa OTP / reset token (${secrets.length} giá trị)`, secrets.length > 0 && leaked.length === 0, leaked.join(","));
   check("log server không chứa password hay argon2 hash", !serverLog.includes("$argon2id$") && !serverLog.includes(`mat-khau-${RUN}`));
+  const mfaLeaked = mfaSecrets.filter((s) => serverLog.includes(s));
+  check(`log server không chứa TOTP secret / mã khôi phục (${mfaSecrets.length} giá trị)`, mfaSecrets.length > 0 && mfaLeaked.length === 0, mfaLeaked.join(","));
 }
 
 // ───────────────────────────── chạy ─────────────────────────────
 
 async function main() {
-  // Dọn dữ liệu của lần chạy trước (chỉ user @acceptance.test) và bộ đếm
+  // Dọn dữ liệu của lần chạy trước (chỉ user @acceptance.test, món có nhãn nghiệm thu) và bộ đếm
   await prisma.user.deleteMany({ where: { email: { endsWith: "@acceptance.test" } } });
+  await prisma.dish.deleteMany({ where: { name: { contains: TEST_DISH_TAG } } });
   await resetThrottles();
   await fakeGoogle.start();
   await startServer();
@@ -648,8 +928,12 @@ async function main() {
     await loginLogoutCrud(account);
     await forgotAndReset(account);
     await searchAndPaging({ ...account, password: `mat-khau-moi-${RUN}` });
+    const accounts = await createRoleAccounts();
+    await rbacAndAbac(accounts);
+    await mfaFlow(accounts);
     await codeReview();
   } finally {
+    await prisma.dish.deleteMany({ where: { name: { contains: TEST_DISH_TAG } } });
     await stopServer();
     fakeGoogle.server.close();
     await resetThrottles();

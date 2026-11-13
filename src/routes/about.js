@@ -11,9 +11,10 @@ router.get(
     const [chefs, dishCount] = await Promise.all([
       prisma.chef.findMany({
         orderBy: { id: "asc" },
-        include: { _count: { select: { dishes: true } } },
+        // Block 9 Bài 2: chỉ đếm món đã đăng (món nháp chưa hiện cho khách)
+        include: { _count: { select: { dishes: { where: { status: "published" } } } } },
       }),
-      prisma.dish.count(),
+      prisma.dish.count({ where: { status: "published" } }),
     ]);
 
     res.render("about", { title: "Về chúng tôi", chefs, dishCount });

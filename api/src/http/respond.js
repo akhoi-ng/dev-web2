@@ -34,6 +34,12 @@ function unauthenticated(res, code, message) {
   return res.status(401).json({ ok: false, error: { code, message } });
 }
 
+// 403: đã xác thực nhưng role không đủ quyền (Block 9 Bài 2). Lớp gọi API giữ token, không refresh.
+function forbidden(res, code = "FORBIDDEN", message = "Tài khoản không có quyền thực hiện thao tác này") {
+  console.warn("[auth]", code, res.req.method, res.req.originalUrl);
+  return res.status(403).json({ ok: false, error: { code, message } });
+}
+
 // 429: vượt giới hạn tần suất hoặc đang bị khóa tạm
 function rateLimited(res, retryAfterSec, message) {
   console.warn("[auth] RATE_LIMITED", res.req.method, res.req.originalUrl);
@@ -77,6 +83,7 @@ module.exports = {
   notFound,
   validationFailed,
   unauthenticated,
+  forbidden,
   rateLimited,
   requireJson,
   routeNotFound,

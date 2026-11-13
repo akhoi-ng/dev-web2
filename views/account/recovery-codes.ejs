@@ -1,0 +1,23 @@
+<%- include("../partials/header") %>
+
+<div class="mx-auto max-w-xl">
+  <%- include("../partials/page-heading", { heading: heading, subheading: "Lưu các mã khôi phục dưới đây ở nơi an toàn. Trang này chỉ hiện MỘT lần." }) %>
+
+  <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200 sm:p-8">
+    <ul class="grid grid-cols-2 gap-2 font-mono text-base tracking-wider" data-recovery-codes>
+      <% codes.forEach(function (c) { %>
+        <li class="rounded-lg bg-stone-50 px-3 py-2 text-center" data-recovery-code><%= c %></li>
+      <% }) %>
+    </ul>
+    <ul class="mt-5 list-disc space-y-1 pl-5 text-sm text-stone-600">
+      <li>Mất điện thoại thì nhập một mã này thay cho mã 6 chữ số khi đăng nhập.</li>
+      <li>Mỗi mã chỉ dùng được một lần. Server chỉ lưu bản băm nên không xem lại được.</li>
+      <li>Các mã khôi phục cũ (nếu có) đã hết hiệu lực.</li>
+    </ul>
+    <div class="mt-6 border-t border-stone-100 pt-5">
+      <a href="/account/security" class="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Tôi đã lưu các mã</a>
+    </div>
+  </div>
+</div>
+
+<%- include("../partials/footer") %>

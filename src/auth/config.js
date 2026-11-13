@@ -39,14 +39,28 @@ const POLICY = {
     forgotEmail: { limit: 3, windowMs: HOUR },
     forgotIp: { limit: 10, windowMs: HOUR },
     resetIp: { limit: 30, windowMs: 15 * MINUTE },
+    mfaIp: { limit: 50, windowMs: 15 * MINUTE },
   },
 
   reset: { ttlMs: 15 * MINUTE },
+
+  // Block 9 Bài 2: MFA bằng TOTP (RFC 6238: 6 chữ số, bước 30 giây)
+  mfa: {
+    issuer: "Lửa Hồng",
+    window: 1, // chấp nhận mã của bước liền trước / liền sau (lệch đồng hồ tối đa 30 giây)
+    challengeTtlMs: 5 * MINUTE, // trạng thái chờ MFA sau khi password đúng
+    maxAttempts: 5, // 5 lần nhập mã sai trong một lần chờ -> hủy, phải đăng nhập lại từ đầu
+    userAttempts: { limit: 10, windowMs: 15 * MINUTE }, // mọi lần nhập mã của một tài khoản (kể cả qua nhiều lần chờ)
+    setupAttempts: { limit: 10, windowMs: 15 * MINUTE }, // xác nhận mã khi bật MFA
+    reauthAttempts: { limit: 5, windowMs: 15 * MINUTE }, // xác thực lại khi thay / tắt MFA, tạo lại mã khôi phục
+    recoveryCodes: 10,
+  },
 };
 
 const COOKIE = {
   session: "sid", // phiên đăng nhập
   anon: "aid", // phiên ẩn danh: gắn CSRF token cho các form trước khi đăng nhập
+  mfa: "mfa", // trạng thái chờ MFA (password đúng, chưa nhập mã); không phải phiên đăng nhập
 };
 
 // Secure bật mặc định (browser vẫn nhận cookie Secure trên http://localhost).
@@ -91,4 +105,14 @@ function secret() {
   return value;
 }
 
-module.exports = { POLICY, COOKIE, SECOND, MINUTE, HOUR, cookieSecure, appUrl, secret, recaptchaConfig };
+// Khóa mã hóa TOTP secret trong DB (AES-256-GCM). Tách khỏi SESSION_SECRET: đổi khóa session
+// không làm mất MFA, và lộ một khóa không lộ cả hai.
+function mfaKey() {
+  const value = process.env.MFA_ENC_KEY;
+  if (!value || value.length < 32) {
+    throw new Error("Thiếu MFA_ENC_KEY (ít nhất 32 ký tự) trong .env");
+  }
+  return value;
+}
+
+module.exports = { POLICY, COOKIE, SECOND, MINUTE, HOUR, cookieSecure, appUrl, secret, mfaKey, recaptchaConfig };

@@ -16,7 +16,8 @@
     "db:cleanup": "node src/auth/cleanup.js",
     "db:seed-user": "node prisma/seed-user.js",
     "mail:test": "node src/auth/mailer.js",
-    "db:block9": "prisma db execute --file prisma/block9-auth.sql --schema prisma/schema.prisma"
+    "db:block9": "prisma db execute --file prisma/block9-auth.sql --schema prisma/schema.prisma",
+    "db:block9-2": "prisma db execute --file prisma/block9-rbac-mfa.sql --schema prisma/schema.prisma"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

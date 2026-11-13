@@ -6,15 +6,17 @@ const DAY = 24 * 60 * 60 * 1000;
 
 async function cleanupExpired(now = new Date()) {
   const dayAgo = new Date(now.getTime() - DAY);
-  const [sessions, throttles] = await Promise.all([
+  const [sessions, throttles, mfaChallenges] = await Promise.all([
     prisma.session.deleteMany({
       where: { OR: [{ expiresAt: { lte: now } }, { absoluteExpiresAt: { lte: now } }] },
     }),
     prisma.authThrottle.deleteMany({
       where: { windowStart: { lte: dayAgo }, OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }] },
     }),
+    // Block 9 Bài 2: trạng thái chờ MFA đã hết hạn
+    prisma.mfaChallenge.deleteMany({ where: { expiresAt: { lte: now } } }),
   ]);
-  return { sessions: sessions.count, throttles: throttles.count };
+  return { sessions: sessions.count, throttles: throttles.count, mfaChallenges: mfaChallenges.count };
 }
 
 module.exports = { cleanupExpired };

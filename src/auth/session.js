@@ -6,6 +6,7 @@
 const prisma = require("../db/prisma");
 const { POLICY, COOKIE, cookieSecure } = require("./config");
 const { randomToken, sha256 } = require("./crypto");
+const { can, actionFor } = require("./policy");
 
 // Mã do server sinh: 32 byte base64url = 43 ký tự. Cookie lạ (sai định dạng) bị bỏ qua.
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -45,7 +46,9 @@ async function loadSession(req, res, next) {
         session && session.expiresAt > now && session.absoluteExpiresAt > now && session.user.status === "active";
 
       if (valid) {
-        req.user = { id: session.user.id, email: session.user.email, role: session.user.role };
+        // role, chefId đọc lại từ DB ở mỗi request: đổi quyền có hiệu lực ngay với phiên đang mở
+        const u = session.user;
+        req.user = { id: u.id, email: u.email, role: u.role, chefId: u.chefId, mfaEnabled: u.mfaEnabled };
         req.sessionHash = sidHash;
         // Gia hạn hạn không hoạt động (không vượt hạn tối đa), tối đa mỗi 5 phút một lần
         const { idleMs, touchEveryMs } = POLICY.session;
@@ -102,27 +105,43 @@ function requireLogin(req, res, next) {
   res.redirect(303, "/login" + target);
 }
 
-// 4. Phân quyền theo role (chạy SAU requireLogin): biết người gọi nhưng không đủ quyền -> 403,
-//    không đổi dữ liệu. Role đọc lại từ DB ở mỗi request (loadSession), đổi role có hiệu lực ngay.
+// Trang 403 FORBIDDEN: biết người gọi nhưng không đủ quyền, không đổi dữ liệu
+function forbidden(res, message = "Tài khoản của bạn không được phép thực hiện thao tác này.") {
+  return res.status(403).render("errors/403", {
+    title: "Không có quyền",
+    heading: "Bạn không có quyền thực hiện thao tác này",
+    message,
+    code: "FORBIDDEN",
+  });
+}
+
+// 4. Phân quyền theo role (chạy SAU requireLogin). Role đọc lại từ DB ở mỗi request (loadSession).
 function requireRole(...roles) {
   return (req, res, next) => {
     if (req.user && roles.includes(req.user.role)) return next();
-    res.status(403).render("errors/403", {
-      title: "Không có quyền",
-      heading: "Bạn không có quyền vào trang này",
-      message: "Khu vực quản trị chỉ dành cho tài khoản quản trị viên.",
-      code: "FORBIDDEN",
-    });
+    forbidden(res, "Tài khoản của bạn chưa được cấp quyền vào khu vực quản trị.");
   };
 }
 
-// Trang mặc định sau khi đăng nhập theo role
+// 5. RBAC theo thao tác (policy.actionFor): viewer chỉ đọc, editor thêm tạo/sửa, admin thêm xóa.
+//    Chạy cho mọi route /admin/*, nên route mới thêm vào cũng được bảo vệ mà không cần nhớ gắn.
+const ACTION_LABELS = { read: "xem", create: "thêm mới", update: "sửa", delete: "xóa" };
+function requirePermission(req, res, next) {
+  const action = actionFor(req.method, req.path);
+  if (action && can(req.user, action)) return next();
+  const role = req.user ? req.user.role : "khách";
+  forbidden(res, `Tài khoản role ${role} không được ${ACTION_LABELS[action] || "thực hiện thao tác này"} trong khu vực quản trị.`);
+}
+
+// Trang mặc định sau khi đăng nhập theo role: Editor, Admin vào trang quản trị
 function homeFor(user) {
-  return user && user.role === "admin" ? "/admin/dishes" : "/dishes";
+  return user && (user.role === "admin" || user.role === "editor") ? "/admin/dishes" : "/dishes";
 }
 
 module.exports = {
   requireRole,
+  requirePermission,
+  forbidden,
   homeFor,
   anonSession,
   loadSession,

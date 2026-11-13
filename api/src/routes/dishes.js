@@ -22,6 +22,9 @@ const DETAIL_INCLUDE = {
 // Danh sách món: đầu bếp + số nguyên liệu trong công thức
 const LIST_INCLUDE = { chef: true, _count: { select: { ingredients: true } } };
 
+// Block 9 Bài 2: GET công khai chỉ trả món đã đăng (status không đọc từ query string)
+const PUBLISHED = { status: "published" };
+
 // Danh sách đầu bếp / nguyên liệu để validate chefId và công thức
 async function loadRefs() {
   const [chefs, ingredients] = await Promise.all([
@@ -37,8 +40,9 @@ async function loadRefs() {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { fields, search } = parseDishSearch(req.query);
-    if (!isEmpty(fields)) return validationFailed(res, fields);
+    const parsed = parseDishSearch(req.query);
+    if (!isEmpty(parsed.fields)) return validationFailed(res, parsed.fields);
+    const search = { ...parsed.search, ...PUBLISHED };
     const paging = pageParams(req.query, DEFAULT_PAGE_SIZE);
 
     // fulltext/fuzzy có từ khóa: SQL xếp hạng chọn id (điểm giảm dần, id tăng dần), Prisma nạp
@@ -76,7 +80,7 @@ router.get(
     const id = parseId(req.params.id);
     if (id === null) return notFound(res, "Món ăn");
 
-    const dish = await prisma.dish.findUnique({ where: { id }, include: DETAIL_INCLUDE });
+    const dish = await prisma.dish.findFirst({ where: { id, ...PUBLISHED }, include: DETAIL_INCLUDE });
     if (!dish) return notFound(res, "Món ăn");
     ok(res, dish);
   })
@@ -90,8 +94,9 @@ router.post(
     const { fields, data, recipe } = validateDish(req.body, { chefs, ingredients });
     if (!isEmpty(fields)) return validationFailed(res, fields);
 
+    // Chỉ admin ghi món qua API (app.js); giữ hành vi Bài 1: món tạo từ SPA hiện ngay trên thực đơn
     const dish = await prisma.dish.create({
-      data: { ...data, ingredients: { create: recipe } },
+      data: { ...data, status: "published", ingredients: { create: recipe } },
       include: DETAIL_INCLUDE,
     });
     ok(res, dish);

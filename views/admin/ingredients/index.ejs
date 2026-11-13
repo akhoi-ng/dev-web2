@@ -5,7 +5,9 @@
     <h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">Quản lý nguyên liệu</h1>
     <p class="mt-1 text-stone-500"><%= total %> nguyên liệu trong kho<% if (totalPages > 1) { %> · Trang <%= page %>/<%= totalPages %><% } %></p>
   </div>
+  <% if (can("create")) { %>
   <a href="/admin/ingredients/new" class="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">+ Thêm mới</a>
+  <% } %>
 </div>
 
 <div class="overflow-x-auto rounded-2xl bg-white shadow-sm ring-1 ring-stone-200">
@@ -36,8 +38,12 @@
           <td class="px-4 py-3 text-center text-stone-600" data-label="Dùng trong"><%= i._count.dishes %> món</td>
           <td class="px-4 py-3 text-stone-500" data-label="Ngày tạo"><%= i.createdAt.toLocaleDateString("vi-VN") %></td>
           <td class="rt-actions whitespace-nowrap px-4 py-3 text-right">
+            <% if (can("update")) { %>
             <a href="/admin/ingredients/<%= i.id %>/edit" class="rounded-lg px-3 py-1.5 font-medium text-brand-700 hover:bg-brand-50">Sửa</a>
+            <% } %>
+            <% if (can("delete")) { %>
             <a href="/admin/ingredients/<%= i.id %>/delete" class="rounded-lg px-3 py-1.5 font-medium text-red-600 hover:bg-red-50">Xóa</a>
+            <% } %>
           </td>
         </tr>
       <% }) %>

@@ -1,4 +1,4 @@
-# Lửa Hồng - Xác thực cho SPA bằng JWT (Block 9, Bài 1)
+# Lửa Hồng - Xác thực cho SPA, phân quyền và MFA (Block 9)
 
 Báo cáo Bài 1 của Block 9 ("Xác thực cho SPA, phân quyền và MFA"). Bài 1 chuyển bốn chức năng
 tài khoản của Block 8 (đăng ký, kích hoạt, đăng nhập, quên mật khẩu) sang **bản CSR của Block 6–7**:
@@ -9,7 +9,8 @@ React SPA `web/` (cổng 5173) gọi REST API `api/` (cổng 3000), hai origin k
   lại mật khẩu. Ghi món ăn và mọi endpoint đầu bếp, nguyên liệu, quản lý đặt bàn cần Bearer token.
 - `web`: trang đăng ký, nhập OTP, đăng nhập, quên mật khẩu, đặt lại mật khẩu; lớp gọi API gắn
   `Authorization: Bearer`, tự làm mới token khi gặp 401; route guard cho `/admin/*`.
-- Chưa phân quyền theo role và chưa có MFA (thuộc Bài 2 trên bản SSR).
+- Bài 2 (bản SSR): phân quyền RBAC Viewer / Editor / Admin, ABAC theo đầu bếp và trạng thái món,
+  MFA bằng TOTP + mã khôi phục. Xem [mục 11](#11-bài-2--phân-quyền-và-mfa-bản-ssr).
 
 Slide thuyết trình: [`BLOCK9-slides.html`](BLOCK9-slides.html) (mở bằng trình duyệt; ← → chuyển
 slide, `N` hiện ghi chú, `F` toàn màn hình).
@@ -118,8 +119,8 @@ dùng để chạy thử, không dùng làm bằng chứng chặn bot.
 | Endpoint | Yêu cầu |
 | --- | --- |
 | `GET /api/dishes`, `GET /api/dishes/:id` | Công khai (tìm kiếm, phân trang của Block 7 giữ nguyên) |
-| `POST`, `PATCH`, `DELETE /api/dishes...` | Bearer token của tài khoản active |
-| `/api/chefs/*`, `/api/ingredients/*`, `/api/admin/bookings/*` | Bearer token, mọi method |
+| `POST`, `PATCH`, `DELETE /api/dishes...` | Bearer token của tài khoản active, role admin (Bài 2) |
+| `/api/chefs/*`, `/api/ingredients/*`, `/api/admin/bookings/*` | Bearer token, mọi method; Bài 2: GET mọi role, POST/PATCH editor + admin, DELETE admin |
 | `/api/stats`, `/api/options`, `/api/team`, `POST /api/bookings`, `GET /api/bookings/:code` | Công khai |
 
 `GET /api/team` là endpoint mới: trang "Về chúng tôi" của khách cần tên và chuyên môn đầu bếp,
@@ -270,3 +271,85 @@ password, OTP và reset token trong ảnh. Chụp CAPTCHA bằng key thật, kh�
 - Nếu response của `/refresh` bị mất giữa đường (cookie mới không tới browser), lần refresh sau gửi
   token cũ và bị coi là dùng lại: người dùng phải đăng nhập lại.
 - `.env` hiện dùng test key reCAPTCHA của Google; phải thay key thật trước khi chụp bằng chứng.
+
+## 11. Bài 2 — Phân quyền và MFA (bản SSR)
+
+### Cài đặt
+
+```bash
+npm install                 # thêm otplib (TOTP), qrcode (vẽ QR ở server)
+npm run db:block9-2         # prisma/block9-rbac-mfa.sql: thêm cột, bảng; chạy lại nhiều lần không lỗi
+npm run db:seed-user        # 4 tài khoản: admin, viewer, editor đầu bếp A, editor đầu bếp B
+```
+
+`.env` cần thêm `MFA_ENC_KEY` (≥ 32 ký tự, khác `SESSION_SECRET`). Không chạy `prisma db push`
+(xóa index trigram của Block 7). SSR và API dùng chung database nên SQL chỉ chạy một lần; lần chạy
+đầu, mọi món đang có nhận `status = 'published'`, sau đó mặc định của món mới là `draft`.
+
+Seed dùng chung `SEED_USER_PASSWORD`; email viewer / editor mặc định là `<tên>+viewer@...`,
+`<tên>+editor-a@...`, `<tên>+editor-b@...` của `SEED_USER_EMAIL` (đặt riêng bằng
+`SEED_VIEWER_EMAIL`, `SEED_EDITOR_A_EMAIL`, `SEED_EDITOR_B_EMAIL`). Đầu bếp A, B là Nguyễn Văn Minh
+và Trần Quốc Huy; mỗi người có ít nhất hai món draft.
+
+### Dữ liệu
+
+| Bảng / cột | Ý nghĩa |
+| --- | --- |
+| `dishes.status` | `draft` | `published`; trang công khai (SSR và `GET /api/dishes`) chỉ hiện `published` |
+| `users.chefId` | Đầu bếp mà Editor phụ trách; chỉ seed / DB gán, form không đổi được |
+| `users.mfaEnabled`, `mfaSecret` | MFA đang bật; secret TOTP mã hóa AES-256-GCM bằng `MFA_ENC_KEY` |
+| `users.mfaPendingSecret` | Secret mới chờ xác nhận mã (bật lần đầu hoặc thay thiết bị) |
+| `users.mfaLastStep` | Bước 30 giây của mã TOTP đúng gần nhất, chống dùng lại mã |
+| `recovery_codes` | `userId`, `codeHash` (HMAC), `usedAt`; 10 mã, hiện một lần |
+| `mfa_challenges` | Trạng thái chờ MFA sau khi password đúng (cookie `mfa` 5 phút, tối đa 5 lần thử) |
+
+### RBAC và ABAC
+
+Mọi quyết định nằm ở `src/auth/policy.js`; route và view hỏi cùng một nơi.
+
+| Role | Đọc | Tạo | Sửa | Xóa |
+| --- | --- | --- | --- | --- |
+| Viewer | ✓ | 403 | 403 | 403 |
+| Editor | ✓ | ✓ (món: gán chefId của tài khoản, status draft) | ✓ (món: chỉ draft của đầu bếp mình) | 403 |
+| Admin | ✓ | ✓ | ✓ (đổi được chefId, status) | ✓ |
+
+- RBAC chạy cho mọi route `/admin/*` ở `app.js` (`requirePermission`): thao tác suy ra từ method
+  và đường dẫn (`GET …/new` = tạo, `GET …/edit` = sửa, `GET …/delete` = xóa, `POST` = tạo,
+  `PATCH` = sửa, `DELETE` = xóa). Route mới thêm vào cũng được bảo vệ mà không cần nhớ gắn.
+- ABAC cho món (`src/routes/admin/dishes.js`): GET form sửa và PATCH đều kiểm tra. Ở PATCH, điều kiện
+  `{ chefId, status: "draft" }` nằm trong WHERE của câu UPDATE (trong transaction cùng việc thay công
+  thức), nên Admin đổi status giữa lúc Editor mở form và lúc gửi thì UPDATE không khớp dòng nào → 403.
+- `chefId`, `status` trong body chỉ được đọc khi người gửi là Admin (`validateDish(..., { canAssign })`).
+  Editor gửi `chefId` của đầu bếp khác hay `status=published` đều bị bỏ qua.
+- Role và `chefId` đọc lại từ DB ở mỗi request (`loadSession`), đổi quyền có hiệu lực ngay.
+- Editor chưa gắn đầu bếp: không thêm được món, không sửa được món nào.
+
+### MFA
+
+| Bước | Cách làm |
+| --- | --- |
+| Bật | `/account/security` → tạo secret chờ xác nhận → `/account/mfa/setup` hiện QR (vẽ ở server) và secret nhập tay → nhập đúng mã mới bật, hiện 10 mã khôi phục một lần. Trang có secret / mã gửi `Cache-Control: no-store` |
+| Đăng nhập | Password đúng + MFA bật → tạo `mfa_challenges` + cookie `mfa`, chuyển `/login/mfa`, **chưa có session**. Mã TOTP hoặc mã khôi phục đúng mới gọi `createSession` (vẫn là chỗ duy nhất tạo session) |
+| Giới hạn thử | 5 lần sai trong một lần chờ → hủy, phải đăng nhập lại; lượt thử được giữ trước khi kiểm tra mã nên request song song không vượt được. Thêm 10 lần / 15 phút theo tài khoản, 50 lần / 15 phút theo IP |
+| Chống dùng lại | TOTP: UPDATE `mfaLastStep` có điều kiện "bước mới > bước cũ". Mã khôi phục: UPDATE `usedAt` có điều kiện `usedAt IS NULL` |
+| Thay / tắt / tạo lại mã | Xác thực lại bằng password hiện tại + mã TOTP hoặc mã khôi phục (5 lần / 15 phút). Password sai thì không kiểm tra mã, nên không tiêu thụ mã khôi phục. Thay thiết bị: secret cũ dùng tới khi secret mới được xác nhận |
+| Sau khi bật / thay / tắt | Hủy các session khác của tài khoản; khi bật / thay còn tăng `tokenVersion` và thu hồi refresh token |
+
+Bản API (Bài 1) không có bước MFA: `POST /api/auth/login` trả `MFA_REQUIRED` cho tài khoản đã bật
+MFA và `requireAuth` từ chối token của tài khoản đó, để SPA không thành đường vòng qua MFA.
+
+### Kiểm thử
+
+- `npm test`: thêm `test/policy.test.js` (bảng quyền, ABAC, `validateDish` bỏ qua chefId/status) và
+  `test/mfa.test.js` (mã hóa secret, bước TOTP, mã khôi phục, QR).
+- `npm run acceptance`: thêm hai phần "Block 9 Bài 2 — RBAC / ABAC" và "Block 9 Bài 2 — MFA". Script tự
+  tạo tài khoản `@acceptance.test` có role, chefId và món có nhãn `[nghiệm thu Bài 2]`, xóa khi xong.
+  Kịch bản đổi status giữa chừng: Editor mở form, Admin đăng món, Editor gửi → 403.
+
+### Giới hạn của Bài 2
+
+- ABAC chỉ cài trên bản SSR. Qua API, ghi món ăn chỉ dành cho Admin, và `GET /api/dishes` chỉ trả
+  món đã đăng nên trang quản trị của SPA không thấy món draft.
+- Đổi `MFA_ENC_KEY` làm mọi secret đã lưu không giải mã được: người dùng phải đăng nhập bằng mã khôi
+  phục rồi bật lại MFA.
+- Bật MFA xong mà đăng xuất ngay trong cùng 30 giây thì phải chờ mã kế tiếp (mã vừa dùng đã bị đánh dấu).

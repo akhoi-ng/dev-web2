@@ -10,6 +10,14 @@ const router = express.Router();
 // Số món mỗi trang trên thực đơn (lưới 3 cột -> 3 hàng)
 const PAGE_SIZE = 9;
 const LIST_INCLUDE = { chef: true };
+// Block 9 Bài 2: khách chỉ thấy món đã đăng; món nháp (draft) chỉ có trong trang quản trị
+const PUBLISHED = { status: "published" };
+
+// Tiêu chí từ URL + điều kiện chỉ món đã đăng (status không đọc từ URL nên khách không đổi được)
+function publicSearch(query) {
+  const { fields, search } = parseDishSearch(query);
+  return { fields, search: { ...search, ...PUBLISHED } };
+}
 
 // Ba kiểu phân trang của thực đơn, lưu trên URL ?view=pages|more|scroll
 const MENU_VIEWS = { pages: "Số trang", more: "Tải thêm", scroll: "Cuộn vô hạn" };
@@ -18,12 +26,12 @@ const parseView = (raw) => (typeof raw === "string" && Object.hasOwn(MENU_VIEWS,
 // Số liệu cho phần đầu trang và các ô danh mục (tính trên toàn thực đơn, không theo bộ lọc)
 async function loadMenuStats() {
   const [byCategory, chefCount, overall, coverImages] = await Promise.all([
-    prisma.dish.groupBy({ by: ["category"], _count: { _all: true } }),
+    prisma.dish.groupBy({ by: ["category"], where: PUBLISHED, _count: { _all: true } }),
     prisma.chef.count(),
-    prisma.dish.aggregate({ _count: { _all: true }, _min: { price: true } }),
+    prisma.dish.aggregate({ where: PUBLISHED, _count: { _all: true }, _min: { price: true } }),
     // Ảnh đầu tiên của mỗi danh mục làm ảnh bìa cho ô danh mục
     prisma.dish.findMany({
-      where: { imageUrl: { not: null } },
+      where: { ...PUBLISHED, imageUrl: { not: null } },
       distinct: ["category"],
       orderBy: { id: "asc" },
       select: { category: true, imageUrl: true },
@@ -48,7 +56,7 @@ async function loadMenuStats() {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { fields, search } = parseDishSearch(req.query);
+    const { fields, search } = publicSearch(req.query);
     const sort = parseDishSort(req.query.sort);
     const view = parseView(req.query.view);
     const searchErrors = Object.values(fields);
@@ -101,7 +109,7 @@ router.get(
 router.get(
   "/items",
   asyncHandler(async (req, res) => {
-    const { fields, search } = parseDishSearch(req.query);
+    const { fields, search } = publicSearch(req.query);
     if (Object.keys(fields).length > 0) return res.status(400).send("");
     const sort = parseDishSort(req.query.sort);
     const result = await findDishes({ search, sort, rawPage: req.query.page, pageSize: PAGE_SIZE, include: LIST_INCLUDE });
@@ -121,8 +129,8 @@ router.get(
     const id = parseId(req.params.id);
     if (id === null) return res.status(404).render("errors/404");
 
-    const dish = await prisma.dish.findUnique({
-      where: { id },
+    const dish = await prisma.dish.findFirst({
+      where: { id, ...PUBLISHED },
       include: {
         chef: true,
         ingredients: {

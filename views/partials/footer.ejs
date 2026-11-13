@@ -30,9 +30,7 @@
         <h2 id="footer-help" class="<%= heading %>">Hỗ trợ</h2>
         <a href="/bookings/new" class="<%= footLink %>">Đặt bàn</a>
         <a href="/about" class="<%= footLink %>">Về chúng tôi</a>
-        <% if (!locals.currentUser || currentUser.role === "admin") { %>
-          <a href="/admin/dishes" class="<%= footLink %>">Trang quản trị</a>
-        <% } %>
+        <a href="/admin/dishes" class="<%= footLink %>">Trang quản trị</a>
       </nav>
 
       <div class="col-span-2 flex flex-col gap-3 text-sm lg:col-span-1">

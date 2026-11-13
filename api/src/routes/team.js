@@ -13,7 +13,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const chefs = await prisma.chef.findMany({
       orderBy: { id: "asc" },
-      select: { id: true, name: true, specialty: true, imageUrl: true, _count: { select: { dishes: true } } },
+      select: { id: true, name: true, specialty: true, imageUrl: true, _count: { select: { dishes: { where: { status: "published" } } } } },
     });
     ok(res, chefs);
   })

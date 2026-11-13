@@ -34,8 +34,12 @@
     </div>
 
     <div class="flex flex-wrap gap-3 border-t border-stone-100 px-6 py-4">
+      <% if (can("update")) { %>
       <a href="/admin/ingredients/<%= ingredient.id %>/edit" class="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Sửa</a>
+      <% } %>
+      <% if (can("delete")) { %>
       <a href="/admin/ingredients/<%= ingredient.id %>/delete" class="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700">Xóa</a>
+      <% } %>
       <a href="/admin/ingredients" class="rounded-xl border border-stone-300 px-5 py-2.5 font-semibold hover:bg-stone-100">Quay lại danh sách</a>
     </div>
   </div>

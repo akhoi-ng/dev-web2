@@ -20,6 +20,8 @@ function buildDishWhere(search) {
 
   if (search.available !== null) where.available = search.available;
   if (search.ingredient) where.ingredients = { some: { ingredient: { name: contains(search.ingredient) } } };
+  // Block 9 Bài 2: trang công khai đặt search.status = "published" (không lấy từ URL)
+  if (search.status) where.status = search.status;
   return where;
 }
 
@@ -45,7 +47,8 @@ function rankedFilterSql(search) {
     search.mode === "fulltext"
       ? Prisma.sql`${FTS_DOCUMENT} @@ ${ftsQuery(search.q)}`
       : Prisma.sql`${fuzzyScore(search.q)} >= ${FUZZY_THRESHOLD}`;
-  return search.category ? Prisma.sql`${text} AND category = ${search.category}` : text;
+  const withCategory = search.category ? Prisma.sql`${text} AND category = ${search.category}` : text;
+  return search.status ? Prisma.sql`${withCategory} AND status = ${search.status}` : withCategory;
 }
 
 function rankedScoreSql(search) {
