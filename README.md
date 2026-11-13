@@ -1,5 +1,8 @@
 # Lửa Hồng - Xác thực tài khoản trên SSR (Block 8)
 
+> **Block 9 – Bài 1 (xác thực cho SPA bằng JWT, bản CSR `api/` + `web/`):** xem
+> [`BLOCK9.md`](BLOCK9.md) và slide [`BLOCK9-slides.html`](BLOCK9-slides.html).
+
 Báo cáo bài tập Block 8 ("Xác thực tài khoản trên SSR") của nhóm. Ứng dụng tiếp tục
 **Restaurant App SSR của Block 5**: một server Express dựng HTML bằng EJS, đọc ghi PostgreSQL
 trên Supabase qua Prisma. Block 8 gắn thêm cụm xác thực:

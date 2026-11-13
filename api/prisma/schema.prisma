@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Dish {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  price       Int
+  category    String?
+  imageUrl    String?
+  available   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Đầu bếp phụ trách (nhiều món - một đầu bếp). Xóa đầu bếp thì món còn lại, chefId = null.
+  chefId      Int?
+  chef        Chef?            @relation(fields: [chefId], references: [id], onDelete: SetNull)
+  // Công thức: các nguyên liệu và định lượng (nhiều - nhiều qua bảng dish_ingredients)
+  ingredients DishIngredient[]
+
+  @@map("dishes")
+}
+
+model Chef {
+  id        Int      @id @default(autoincrement())
+  name      String
+  specialty String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  dishes Dish[]
+
+  @@map("chefs")
+}
+
+model Ingredient {
+  id        Int      @id @default(autoincrement())
+  name      String
+  unit      String
+  createdAt DateTime @default(now())
+
+  dishes DishIngredient[]
+
+  @@map("ingredients")
+}
+
+// Yêu cầu đặt bàn của khách. `code` là mã ngẫu nhiên để khách xem lại yêu cầu của mình
+// (không dùng id trong URL, vì id tăng dần ai cũng đoán được).
+model Booking {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  phone     String
+  guests    Int
+  bookedAt  DateTime
+  note      String?
+  status    String   @default("pending") // pending | confirmed | cancelled
+  createdAt DateTime @default(now())
+
+  @@index([bookedAt])
+  @@map("bookings")
+}
+
+// Bảng nối Dish <-> Ingredient, lưu thêm định lượng cho mỗi phần ăn (theo đơn vị của nguyên liệu)
+model DishIngredient {
+  dishId       Int
+  ingredientId Int
+  quantity     Float
+
+  dish       Dish       @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@id([dishId, ingredientId])
+  @@index([ingredientId])
+  @@map("dish_ingredients")
+}
+
+// ───────────────────────── Block 8: xác thực tài khoản ─────────────────────────
+
+// Tài khoản. `email` là bản chuẩn hóa (cắt khoảng trắng, chữ thường) dùng để so sánh và là khóa
+// duy nhất; `emailInput` là bản người dùng gõ, chỉ để hiển thị. Không bao giờ lưu password gốc.
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  emailInput      String
+  passwordHash    String // Argon2id, chuỗi PHC có thuật toán, tham số, salt
+  role            String    @default("viewer") // server gán; form đăng ký không đổi được
+  status          String    @default("pending") // pending | active
+  emailVerifiedAt DateTime?
+  // Block 9: tăng khi đặt lại mật khẩu hoặc "đăng xuất mọi nơi". JWT mang số cũ bị API từ chối.
+  tokenVersion    Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions       Session[]
+  activation     ActivationChallenge?
+  passwordResets PasswordReset[]
+  refreshTokens  RefreshToken[]
+
+  @@map("users")
+}
+
+// OTP kích hoạt: một dòng cho mỗi tài khoản pending. Gửi lại thì ghi đè otpHash nên mã cũ mất
+// hiệu lực; attempts gắn với tài khoản, không về 0 khi gửi lại.
+model ActivationChallenge {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  purpose     String    @default("activation")
+  otpHash     String // HMAC-SHA256(SESSION_SECRET, userId:otp), không lưu OTP
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  lockedUntil DateTime?
+  lastSentAt  DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("activation_challenges")
+}
+
+// Reset token: token gốc chỉ nằm trong email; DB lưu SHA-256 của token.
+model PasswordReset {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+// Phiên đăng nhập lưu ở PostgreSQL (khởi động lại server không mất). Cookie `sid` chỉ mang mã
+// ngẫu nhiên; DB lưu SHA-256 của mã đó nên đọc được bảng này vẫn không dựng lại được cookie.
+model Session {
+  sidHash           String   @id
+  userId            Int
+  createdAt         DateTime @default(now())
+  expiresAt         DateTime // hạn không hoạt động, gia hạn khi người dùng còn thao tác
+  absoluteExpiresAt DateTime // hạn tối đa tính từ lúc đăng nhập, không gia hạn
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// Bộ đếm cho rate limit và đăng nhập sai. key ví dụ: "login-fail:email:an@example.com",
+// "login:ip:127.0.0.1", "register:ip:...", "forgot:email:...". Đếm trong cửa sổ bắt đầu ở
+// windowStart; lockedUntil là thời điểm hết khóa tạm.
+model AuthThrottle {
+  key         String    @id
+  count       Int
+  windowStart DateTime
+  lockedUntil DateTime?
+
+  @@map("auth_throttles")
+}
+
+// ───────────────────────── Block 9: refresh token cho SPA (api/) ─────────────────────────
+
+// Refresh token dạng chuỗi ngẫu nhiên, gửi trong cookie HttpOnly `rt`; DB chỉ lưu SHA-256.
+// Mỗi lần làm mới, token cũ được đánh dấu usedAt và một token mới cùng familyId được cấp
+// (rotation). Token đã dùng mà bị gửi lại -> coi là bị đánh cắp, thu hồi cả family.
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  familyId  String // chung cho mọi token sinh ra từ một lần đăng nhập
+  tokenHash String    @unique
+  expiresAt DateTime // hạn tuyệt đối của family (tính từ lúc đăng nhập), token mới không gia hạn
+  usedAt    DateTime? // đã đổi lấy token mới
+  revokedAt DateTime? // logout, đặt lại mật khẩu, phát hiện dùng lại
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}

@@ -1,0 +1,39 @@
+{
+  "name": "restaurant-api",
+  "version": "1.0.0",
+  "description": "Lửa Hồng - REST API (Express + Prisma) + xác thực JWT cho SPA",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "acceptance": "node scripts/acceptance.mjs",
+    "db:push": "prisma db push",
+    "db:search": "prisma db execute --file prisma/search.sql --schema prisma/schema.prisma",
+    "db:seed": "prisma db seed",
+    "postinstall": "prisma generate",
+    "acceptance:auth": "node scripts/acceptance-auth.mjs",
+    "db:cleanup": "node src/auth/cleanup.js",
+    "db:seed-user": "node prisma/seed-user.js",
+    "mail:test": "node src/auth/mailer.js",
+    "db:block9": "prisma db execute --file prisma/block9-auth.sql --schema prisma/schema.prisma"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "^2.2.2",
+    "@prisma/client": "^6.16.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^7.0.13",
+    "resend": "^6.38.0",
+    "validator": "^13.15.35"
+  },
+  "devDependencies": {
+    "prisma": "^6.16.0"
+  }
+}

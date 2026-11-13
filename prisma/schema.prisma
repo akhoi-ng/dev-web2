@@ -93,12 +93,15 @@ model User {
   role            String    @default("viewer") // server gán; form đăng ký không đổi được
   status          String    @default("pending") // pending | active
   emailVerifiedAt DateTime?
+  // Block 9: tăng khi đặt lại mật khẩu hoặc "đăng xuất mọi nơi". JWT mang số cũ bị API từ chối.
+  tokenVersion    Int       @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   sessions       Session[]
   activation     ActivationChallenge?
   passwordResets PasswordReset[]
+  refreshTokens  RefreshToken[]
 
   @@map("users")
 }
@@ -163,4 +166,26 @@ model AuthThrottle {
   lockedUntil DateTime?
 
   @@map("auth_throttles")
+}
+
+// ───────────────────────── Block 9: refresh token cho SPA (api/) ─────────────────────────
+
+// Refresh token dạng chuỗi ngẫu nhiên, gửi trong cookie HttpOnly `rt`; DB chỉ lưu SHA-256.
+// Mỗi lần làm mới, token cũ được đánh dấu usedAt và một token mới cùng familyId được cấp
+// (rotation). Token đã dùng mà bị gửi lại -> coi là bị đánh cắp, thu hồi cả family.
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  familyId  String // chung cho mọi token sinh ra từ một lần đăng nhập
+  tokenHash String    @unique
+  expiresAt DateTime // hạn tuyệt đối của family (tính từ lúc đăng nhập), token mới không gia hạn
+  usedAt    DateTime? // đã đổi lấy token mới
+  revokedAt DateTime? // logout, đặt lại mật khẩu, phát hiện dùng lại
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
 }

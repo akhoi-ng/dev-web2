@@ -1,0 +1,110 @@
+# Block 9 – Bài 1: thử xác thực JWT bằng request trực tiếp (REST Client của VS Code).
+# Chạy API trước: npm run dev. Che token, password, OTP trước khi chụp làm bằng chứng.
+@api = http://localhost:3000
+@origin = http://localhost:5173
+@email = ban@example.com
+@password = mat-khau-cua-ban
+
+### Site key reCAPTCHA (công khai)
+GET {{api}}/api/auth/captcha
+Origin: {{origin}}
+
+### Đăng ký thiếu CAPTCHA -> 200 CAPTCHA_REQUIRED, không tạo user
+POST {{api}}/api/auth/register
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}", "role": "admin" }
+
+### Đăng ký với token CAPTCHA lấy từ widget (DevTools: grecaptcha.getResponse()) -> 200 ok, role vẫn viewer
+POST {{api}}/api/auth/register
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}", "role": "admin", "captcha": "<dán token reCAPTCHA>" }
+
+### Kích hoạt: OTP sai -> INVALID_OTP
+POST {{api}}/api/auth/activate
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "email": "{{email}}", "otp": "000000" }
+
+### Gửi lại OTP (chờ 60 giây giữa hai lần, tối đa 5 lần/giờ)
+POST {{api}}/api/auth/activate/resend
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "email": "{{email}}" }
+
+### Đăng nhập -> { accessToken, expiresIn: 900 } + Set-Cookie rt (HttpOnly)
+# @name login
+POST {{api}}/api/auth/login
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+### Thông tin tài khoản (role đọc từ DB)
+GET {{api}}/api/auth/me
+Origin: {{origin}}
+Authorization: Bearer {{login.response.body.$.data.accessToken}}
+
+### Chưa đăng nhập: POST /api/dishes -> 401 UNAUTHENTICATED
+POST {{api}}/api/dishes
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "name": "Món thử", "price": 50000 }
+
+### Có token: tạo đầu bếp -> 200 ok
+POST {{api}}/api/chefs
+Origin: {{origin}}
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.$.data.accessToken}}
+
+{ "name": "Bếp thử", "specialty": "Món Việt" }
+
+### JWT bị sửa: đổi một ký tự trong phần payload (giữa hai dấu chấm) -> 401 UNAUTHENTICATED
+GET {{api}}/api/chefs
+Origin: {{origin}}
+Authorization: Bearer <dán token đã sửa payload>
+
+### Preflight với Authorization -> 204, Access-Control-Allow-Headers có Authorization
+OPTIONS {{api}}/api/dishes/3
+Origin: {{origin}}
+Access-Control-Request-Method: PATCH
+Access-Control-Request-Headers: authorization, content-type
+
+### Đọc thực đơn công khai, có tìm kiếm + phân trang, không token -> 200 ok
+GET {{api}}/api/dishes?mode=basic&q=phở&page=1&pageSize=9
+Origin: {{origin}}
+
+### Làm mới access token bằng cookie rt (REST Client tự gửi cookie đã nhận) -> token mới + rt mới
+# Cookie rt có cờ Secure: công cụ HTTP không gửi cookie Secure qua http thì đặt COOKIE_SECURE=0 trong api/.env khi thử
+POST {{api}}/api/auth/refresh
+Origin: {{origin}}
+Content-Type: application/json
+
+{}
+
+### Đăng xuất thiết bị này: thu hồi refresh token
+POST {{api}}/api/auth/logout
+Origin: {{origin}}
+Content-Type: application/json
+
+{}
+
+### Quên mật khẩu: cùng phản hồi cho email có và không có tài khoản
+POST {{api}}/api/auth/forgot
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "email": "{{email}}" }
+
+### Đặt lại mật khẩu: token sai -> INVALID_RESET_TOKEN
+POST {{api}}/api/auth/reset
+Origin: {{origin}}
+Content-Type: application/json
+
+{ "token": "token-sai", "password": "mat-khau-moi-123" }

@@ -237,7 +237,9 @@ async function resetPassword(token, password, now = new Date()) {
     });
     if (used.count !== 1) return null;
     const row = await tx.passwordReset.findUnique({ where: { tokenHash }, include: { user: true } });
-    await tx.user.update({ where: { id: row.userId }, data: { passwordHash } });
+    // Block 9: tăng tokenVersion và thu hồi refresh token để JWT của bản SPA (api/) cũng mất hiệu lực
+    await tx.user.update({ where: { id: row.userId }, data: { passwordHash, tokenVersion: { increment: 1 } } });
+    await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: now } });
     await tx.passwordReset.updateMany({
       where: { userId: row.userId, usedAt: null, expiresAt: { gt: now } },
       data: { expiresAt: now },
