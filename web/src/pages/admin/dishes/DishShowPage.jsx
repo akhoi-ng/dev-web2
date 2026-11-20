@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { adminDishesApi } from "../../../api/index.js";
+import { isAdminUser, useAuth } from "../../../auth/AuthContext.jsx";
 import DishStatusBadge from "./DishStatusBadge.jsx";
 import ChefAvatar from "../../../components/ChefAvatar.jsx";
 import DataStatus from "../../../components/DataStatus.jsx";
@@ -14,6 +15,8 @@ const row = "grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4";
 // GET /admin/dishes/:id — chi tiết món ăn (trang đích sau khi thêm / sửa)
 export default function DishShowPage() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const isAdmin = isAdminUser(user);
   const state = useApiData((signal) => adminDishesApi.get(id, signal), [id]);
   useDocumentTitle(state.status === "ok" ? state.data.name : "Món ăn");
 
@@ -35,10 +38,18 @@ export default function DishShowPage() {
                 <dd className="sm:col-span-2">
                   {dish.chef ? (
                     <>
-                      <Link to={"/admin/chefs/" + dish.chef.id} className="inline-flex items-center gap-2 font-semibold hover:text-brand-700">
-                        <ChefAvatar chef={dish.chef} size="h-7 w-7" textSize="text-xs" />
-                        {dish.chef.name}
-                      </Link>
+                      {/* Trang đầu bếp chỉ Admin mở được; Editor chỉ thấy tên */}
+                      {isAdmin ? (
+                        <Link to={"/admin/chefs/" + dish.chef.id} className="inline-flex items-center gap-2 font-semibold hover:text-brand-700">
+                          <ChefAvatar chef={dish.chef} size="h-7 w-7" textSize="text-xs" />
+                          {dish.chef.name}
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center gap-2 font-semibold">
+                          <ChefAvatar chef={dish.chef} size="h-7 w-7" textSize="text-xs" />
+                          {dish.chef.name}
+                        </span>
+                      )}
                       <span className="text-stone-500"> · {dish.chef.specialty}</span>
                     </>
                   ) : (
@@ -61,10 +72,17 @@ export default function DishShowPage() {
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {dish.ingredients.map((di) => (
                     <li key={di.ingredientId}>
-                      <Link to={"/admin/ingredients/" + di.ingredientId} className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm hover:bg-brand-50">
-                        <span>{di.ingredient.name}</span>
-                        <span className="font-semibold text-stone-700">{formatQty(di.quantity)} {di.ingredient.unit}</span>
-                      </Link>
+                      {isAdmin ? (
+                        <Link to={"/admin/ingredients/" + di.ingredientId} className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm hover:bg-brand-50">
+                          <span>{di.ingredient.name}</span>
+                          <span className="font-semibold text-stone-700">{formatQty(di.quantity)} {di.ingredient.unit}</span>
+                        </Link>
+                      ) : (
+                        <div className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm">
+                          <span>{di.ingredient.name}</span>
+                          <span className="font-semibold text-stone-700">{formatQty(di.quantity)} {di.ingredient.unit}</span>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

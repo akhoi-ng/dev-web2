@@ -641,14 +641,15 @@ async function mfaForSpa() {
   check("log của API không chứa TOTP secret hay mã khôi phục", !serverLog.includes(secret) && ![...recovery, ...recovery2].some((c) => serverLog.includes(c)));
 }
 
-// ───────────────────────── Block 10: khu vực quản trị chỉ Admin ─────────────────────────
+// ──────────────── Block 10: khu vực quản trị (Admin; Editor chỉ món nháp của mình) ────────────────
 
 const ADMIN_TAG = `[nghiệm thu Block 10 ${RUN}]`;
 
 async function adminOnlyOnApi() {
-  section("Block 10 · Khu vực quản trị của API chỉ dành cho Admin");
+  section("Block 10 · Khu vực quản trị của API: Admin mọi thứ, Editor chỉ món nháp của mình, Viewer 403");
   await resetIpLimits();
   const chef = await prisma.chef.create({ data: { name: `Bếp A ${ADMIN_TAG}`, specialty: "x" } });
+  const otherChef = await prisma.chef.create({ data: { name: `Bếp B ${ADMIN_TAG}`, specialty: "x" } });
   const acc = {};
   for (const [tag, data] of [
     ["viewer", { role: "viewer" }],
@@ -660,35 +661,53 @@ async function adminOnlyOnApi() {
     acc[tag] = { ...a, token: (await login(a)).token };
   }
   const [viewer, editor, admin] = [acc.viewer.token, acc.editor.token, acc.admin.token];
-  const mk = (name, status) => prisma.dish.create({ data: { name: `${name} ${ADMIN_TAG}`, price: 10000, chefId: chef.id, status } });
+  const mk = (name, status, chefId = chef.id) =>
+    prisma.dish.create({ data: { name: `${name} ${ADMIN_TAG}`, price: 10000, chefId, status } });
   const draft = await mk("Nháp", "draft");
   const published = await mk("Đã đăng", "published");
+  const otherDraft = await mk("Nháp bếp B", "draft", otherChef.id);
   const dish = (id) => prisma.dish.findUnique({ where: { id } });
 
-  // Đọc khu vực quản trị: chỉ Admin
+  // Đọc khu vực quản trị
   const reads = ["/api/admin/dishes", `/api/admin/dishes/${draft.id}`, "/api/chefs", "/api/ingredients", "/api/admin/bookings"];
-  for (const [role, token] of [["viewer", viewer], ["editor", editor]]) {
-    const results = await Promise.all(reads.map((p) => call("GET", p, { token })));
-    check(`${role}: GET ${reads.length} endpoint quản trị -> 403 FORBIDDEN`, results.every((x) => x.status === 403 && code(x) === "FORBIDDEN"), results.map((x) => x.status).join(","));
-  }
-  let r = await call("GET", "/api/admin/dishes");
+  let results = await Promise.all(reads.map((p) => call("GET", p, { token: viewer })));
+  check(`viewer: GET ${reads.length} endpoint quản trị -> 403 FORBIDDEN`, results.every((x) => x.status === 403 && code(x) === "FORBIDDEN"), results.map((x) => x.status).join(","));
+  results = await Promise.all(reads.slice(0, 4).map((p) => call("GET", p, { token: editor })));
+  check("editor: GET món (cả nháp), đầu bếp, nguyên liệu -> 200", results.every((x) => x.json?.ok === true), results.map((x) => x.status).join(","));
+  let r = await call("GET", "/api/admin/bookings", { token: editor });
+  check("editor: GET /api/admin/bookings -> 403 (đặt bàn chỉ Admin)", r.status === 403 && code(r) === "FORBIDDEN", `${r.status}`);
+  r = await call("GET", `/api/admin/dishes/${draft.id}`, { token: editor });
+  check("editor: món nháp của đầu bếp mình có canEdit true, canDelete false", r.json?.data?.canEdit === true && r.json.data.canDelete === false, r.text.slice(0, 160));
+  r = await call("GET", `/api/admin/dishes/${published.id}`, { token: editor });
+  check("editor: món đã đăng có canEdit false", r.json?.data?.canEdit === false, r.text.slice(0, 160));
+  r = await call("GET", "/api/admin/dishes");
   check("không token: GET /api/admin/dishes -> 401 (xác thực trước phân quyền)", r.status === 401);
   r = await call("GET", "/api/auth/me", { token: editor });
-  check("editor vẫn đăng nhập được: /api/auth/me -> role editor", r.json?.data?.role === "editor");
+  check("editor: /api/auth/me -> role editor", r.json?.data?.role === "editor");
   r = await call("GET", "/api/auth/mfa/status", { token: viewer });
   check("viewer vẫn quản lý MFA của mình: /api/auth/mfa/status -> 200", r.json?.ok === true);
 
-  // Ghi: chỉ Admin, dữ liệu không đổi khi bị chặn
-  r = await call("POST", "/api/dishes", { token: editor, body: { name: `Editor tạo ${ADMIN_TAG}`, price: 5000 } });
-  check("editor: POST /api/dishes -> 403, không tạo món", r.status === 403 && (await prisma.dish.count({ where: { name: `Editor tạo ${ADMIN_TAG}` } })) === 0, `${r.status}`);
-  r = await call("PATCH", `/api/admin/dishes/${draft.id}`, { token: editor, body: { price: 1 } });
-  check("editor: PATCH món nháp của đầu bếp mình -> 403, giá không đổi", r.status === 403 && (await dish(draft.id)).price === 10000, `${r.status}`);
-  r = await call("PATCH", `/api/dishes/${draft.id}`, { token: viewer, body: { price: 1 } });
-  check("viewer: PATCH /api/dishes/:id -> 403, giá không đổi", r.status === 403 && (await dish(draft.id)).price === 10000, `${r.status}`);
-  r = await call("DELETE", `/api/dishes/${published.id}`, { token: editor });
-  check("editor: DELETE món -> 403, món còn", r.status === 403 && Boolean(await dish(published.id)), `${r.status}`);
+  // Ghi của Editor: ABAC (đầu bếp của mình + món nháp), không xóa
+  r = await call("POST", "/api/admin/dishes", { token: editor, body: { name: `Editor tạo ${ADMIN_TAG}`, price: 5000, chefId: otherChef.id, status: "published" } });
+  check("editor: tạo món -> nháp của đầu bếp mình (chefId / status trong body bị bỏ qua)", r.json?.data?.status === "draft" && r.json.data.chefId === chef.id, r.text.slice(0, 160));
+  r = await call("PATCH", `/api/admin/dishes/${draft.id}`, { token: editor, body: { price: 12000 } });
+  check("editor: PATCH món nháp của đầu bếp mình -> 200, giá đổi", r.json?.ok === true && (await dish(draft.id)).price === 12000, r.text.slice(0, 160));
+  r = await call("PATCH", `/api/admin/dishes/${draft.id}`, { token: editor, body: { status: "published", chefId: otherChef.id } });
+  check("editor: gửi status / chefId -> bị bỏ qua, món vẫn nháp của đầu bếp mình", (await dish(draft.id)).status === "draft" && (await dish(draft.id)).chefId === chef.id, r.text.slice(0, 160));
+  r = await call("PATCH", `/api/dishes/${published.id}`, { token: editor, body: { price: 1 } });
+  check("editor: PATCH món đã đăng -> 403, giá không đổi", r.status === 403 && (await dish(published.id)).price === 10000, `${r.status}`);
+  r = await call("PATCH", `/api/admin/dishes/${otherDraft.id}`, { token: editor, body: { price: 1 } });
+  check("editor: PATCH món nháp của đầu bếp khác -> 403, giá không đổi", r.status === 403 && (await dish(otherDraft.id)).price === 10000, `${r.status}`);
+  r = await call("DELETE", `/api/dishes/${draft.id}`, { token: editor });
+  check("editor: DELETE món -> 403, món còn", r.status === 403 && Boolean(await dish(draft.id)), `${r.status}`);
   r = await call("POST", "/api/chefs", { token: editor, body: { name: `x ${ADMIN_TAG}`, specialty: "x" } });
   check("editor: POST /api/chefs -> 403", r.status === 403, `${r.status}`);
+
+  // Ghi của Viewer: 403, dữ liệu không đổi
+  r = await call("PATCH", `/api/dishes/${draft.id}`, { token: viewer, body: { price: 1 } });
+  check("viewer: PATCH /api/dishes/:id -> 403, giá không đổi", r.status === 403 && (await dish(draft.id)).price === 12000, `${r.status}`);
+  r = await call("POST", "/api/dishes", { token: viewer, body: { name: `Viewer tạo ${ADMIN_TAG}`, price: 5000 } });
+  check("viewer: POST /api/dishes -> 403, không tạo món", r.status === 403 && (await prisma.dish.count({ where: { name: `Viewer tạo ${ADMIN_TAG}` } })) === 0, `${r.status}`);
 
   // Trang khách không bị ảnh hưởng
   r = await call("GET", `/api/dishes/${published.id}`);
@@ -712,10 +731,10 @@ async function adminOnlyOnApi() {
   r = await call("DELETE", `/api/admin/dishes/${published.id}`, { token: admin });
   check("admin: xóa món -> 200", r.json?.ok === true && !(await dish(published.id)));
 
-  // Role đọc từ DB ở mỗi request: hạ admin xuống editor thì token đang có bị chặn ngay
-  await prisma.user.update({ where: { email: acc.admin.email }, data: { role: "editor" } });
+  // Role đọc từ DB ở mỗi request: hạ admin xuống viewer thì token đang có bị chặn ngay
+  await prisma.user.update({ where: { email: acc.admin.email }, data: { role: "viewer" } });
   r = await call("GET", "/api/admin/dishes", { token: admin });
-  check("hạ admin xuống editor trong DB -> token đang dùng bị 403 ngay", r.status === 403, `${r.status}`);
+  check("hạ admin xuống viewer trong DB -> token đang dùng bị 403 ngay", r.status === 403, `${r.status}`);
 }
 
 async function cleanupBlock10() {

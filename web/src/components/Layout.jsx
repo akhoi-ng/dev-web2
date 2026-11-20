@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import Logo from "./Logo.jsx";
-import { isAdminUser, useAuth } from "../auth/AuthContext.jsx";
+import { isAdminUser, isStaffUser, useAuth } from "../auth/AuthContext.jsx";
 import { AdminOnly } from "../auth/RequireAdmin.jsx";
 import { RESTAURANT } from "../lib/restaurant.js";
 import { formatPhone } from "../lib/format.js";
@@ -90,13 +90,14 @@ function AccountArea({ compact = false }) {
   );
 }
 
-// isAdmin: đang ở trang /admin/*. canAdmin: tài khoản Admin (Block 10: chỉ Admin thấy lối vào quản trị;
-// ẩn chỉ là giao diện, API quản trị tự trả 403 với role khác)
+// isAdmin: đang ở trang /admin/*. canAdmin: tài khoản Admin hoặc Editor (Block 10: Editor chỉ thấy tab
+// Món ăn; ẩn chỉ là giao diện, API quản trị tự trả 403 khi không đủ quyền)
 function Header({ isAdmin }) {
   const menuRef = useRef(null);
   const { pathname } = useLocation();
   const { status, user } = useAuth();
-  const canAdmin = status === "authed" && isAdminUser(user);
+  const canAdmin = status === "authed" && isStaffUser(user);
+  const adminLinks = isAdminUser(user) ? ADMIN_LINKS : ADMIN_LINKS.slice(0, 1);
 
   // Menu thả xuống trên điện thoại tự đóng sau khi chuyển trang
   useEffect(() => {
@@ -181,7 +182,7 @@ function Header({ isAdmin }) {
         <nav className="border-t border-stone-100 bg-ink" aria-label="Quản trị">
           {/* Điện thoại: 4 tab chia đều chiều ngang; màn hình rộng: xếp liền nhau */}
           <div className="mx-auto grid max-w-6xl grid-cols-4 px-2 sm:flex sm:gap-1 sm:px-4">
-            {ADMIN_LINKS.map((link) => (
+            {adminLinks.map((link) => (
               <NavLink
                 key={link.href}
                 to={link.href}
@@ -281,7 +282,7 @@ export default function Layout() {
   const { pathname, search, hash, key } = useLocation();
   const { user } = useAuth();
   // Header kiểu quản trị chỉ khi Admin đang ở /admin/*; role khác mở /admin/* thấy header khách + trang 403
-  const isAdmin = pathname.startsWith("/admin") && isAdminUser(user);
+  const isAdmin = pathname.startsWith("/admin") && isStaffUser(user);
 
   // SPA không tự cuộn: về đầu trang khi đổi trang hoặc đổi query (lọc, phân trang);
   // nếu URL có #mục thì cuộn tới mục đó, thử lại trong ~1 giây vì nội dung tải bất đồng bộ.

@@ -3,11 +3,10 @@
 //   /api/admin/dishes  (adminRouter)   cần Bearer: GET thấy cả món nháp, kèm cờ canEdit / canDelete
 //                                      để SPA biết hiện nút nào; ghi như /api/dishes
 //
-// Block 10: app.js chỉ cho Admin tới các handler ghi và router quản trị (requireAdmin). Handler vẫn
-// giữ cùng quy tắc với bản SSR (src/routes/admin/dishes.js) như một lớp kiểm tra thứ hai, để nới
-// cổng cho Editor sau này không mở ra quyền rộng hơn:
-//   POST    Admin chọn đầu bếp và trạng thái (mặc định published). Editor (nếu được cho qua cổng):
-//           chefId của tài khoản, status draft, chefId / status trong body bị bỏ qua.
+// Block 10: app.js cho Editor và Admin tới các handler ghi và router quản trị (requireDishStaff:
+// viewer -> 403, RBAC theo method). Handler giữ cùng quy tắc với bản SSR (src/routes/admin/dishes.js):
+//   POST    Admin chọn đầu bếp và trạng thái (mặc định published). Editor: chefId của tài khoản,
+//           status draft, chefId / status trong body bị bỏ qua; chưa gắn đầu bếp -> 403.
 //   PATCH   ABAC: Editor chỉ sửa món draft của đầu bếp mình; điều kiện nằm trong WHERE của câu UPDATE
 //           (cùng transaction với thay công thức). Admin: không thêm điều kiện.
 //   DELETE  chỉ Admin.

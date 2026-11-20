@@ -61,17 +61,23 @@ export const router = createBrowserRouter([
             children: [
               // Mọi tài khoản đã đăng nhập: bật / tắt MFA của mình
               { path: "account/security", element: <SecurityPage /> },
-              // Block 10: trang quản trị chỉ dành cho Admin (role khác: trang 403; API cũng trả 403)
+              // Block 10: khu món ăn cho Admin và Editor (Editor: sửa món nháp của đầu bếp mình, API
+              // kiểm tra lại); các trang quản trị khác chỉ Admin. Không đủ quyền: trang 403; API cũng trả 403
               {
-                element: <RequireAdmin />,
+                element: <RequireAdmin allowEditor />,
                 children: [
                   { path: "admin", element: <Navigate to="/admin/dishes" replace /> },
-                  { path: "admin/bookings", element: <AdminBookingsPage /> },
                   { path: "admin/dishes", element: <DishListPage /> },
                   { path: "admin/dishes/new", element: <DishNewPage /> },
                   { path: "admin/dishes/:id", element: <DishShowPage /> },
                   { path: "admin/dishes/:id/edit", element: <DishEditPage /> },
                   { path: "admin/dishes/:id/delete", element: <DishDeletePage /> },
+                ],
+              },
+              {
+                element: <RequireAdmin />,
+                children: [
+                  { path: "admin/bookings", element: <AdminBookingsPage /> },
                   { path: "admin/chefs", element: <ChefListPage /> },
                   { path: "admin/chefs/new", element: <ChefNewPage /> },
                   { path: "admin/chefs/:id", element: <ChefShowPage /> },

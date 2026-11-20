@@ -102,5 +102,5 @@ export function useAuth() {
   return ctx;
 }
 
-// safeNext, isAdminUser, landingFor nằm ở landing.js (chạy được dưới Node thuần để test)
-export { safeNext, isAdminUser, landingFor } from "./landing.js";
+// safeNext, isAdminUser, isStaffUser, landingFor nằm ở landing.js (chạy được dưới Node thuần để test)
+export { safeNext, isAdminUser, isStaffUser, landingFor } from "./landing.js";

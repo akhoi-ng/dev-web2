@@ -2,7 +2,7 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const { corsMiddleware } = require("./http/cors");
 const { requireJson, routeNotFound, errorHandler } = require("./http/respond");
-const { requireAuth, protectMethods, requireAdmin, adminFor } = require("./auth/middleware");
+const { requireAuth, protectMethods, requireAdmin, dishStaffFor, requireDishStaff, adminOrEditorRead } = require("./auth/middleware");
 const authRouter = require("./routes/auth");
 const { publicRouter: dishesRouter, adminRouter: adminDishesRouter } = require("./routes/dishes");
 const chefsRouter = require("./routes/chefs");
@@ -33,15 +33,17 @@ function createApp({ corsOrigin, trustProxy = false }) {
   //    Công khai: đăng ký/đăng nhập..., thực đơn (GET dishes), số liệu, đội ngũ, khách đặt bàn
   //    Cần Bearer token của tài khoản active: ghi dishes, mọi endpoint chefs, ingredients, admin/bookings
   //    GET /api/dishes chỉ trả món đã đăng (Block 9 Bài 2).
-  //    Block 10: khu vực quản trị của bản SPA chỉ dành cho Admin. Mọi endpoint quản trị (ghi món,
-  //    /api/admin/*, chefs, ingredients) cần Bearer token (401) VÀ role admin (403). Viewer, Editor
-  //    vẫn đăng nhập, bật MFA, xem thực đơn. Bản SSR giữ RBAC + ABAC của Block 9 (viewer đọc, editor
-  //    sửa món nháp của mình); điều kiện ABAC vẫn nằm trong handler ghi món (routes/dishes.js).
+  //    Block 10: mọi endpoint quản trị cần Bearer token (401) rồi mới xét quyền (403):
+  //      khu món ăn (ghi /api/dishes, /api/admin/dishes): Editor + Admin, RBAC theo method (Editor
+  //        không xóa); ABAC của Editor (món nháp của đầu bếp mình) nằm trong handler (routes/dishes.js)
+  //      chefs, ingredients: Admin; Editor chỉ GET (danh sách cho form món ăn)
+  //      admin/bookings: chỉ Admin
+  //    Viewer không vào khu quản trị; vẫn đăng nhập, bật MFA, xem thực đơn.
   app.use("/api/auth", authRouter);
-  app.use("/api/dishes", protectMethods(WRITE_METHODS), adminFor(WRITE_METHODS), dishesRouter);
-  app.use("/api/admin/dishes", requireAuth, requireAdmin, adminDishesRouter);
-  app.use("/api/chefs", requireAuth, requireAdmin, chefsRouter);
-  app.use("/api/ingredients", requireAuth, requireAdmin, ingredientsRouter);
+  app.use("/api/dishes", protectMethods(WRITE_METHODS), dishStaffFor(WRITE_METHODS), dishesRouter);
+  app.use("/api/admin/dishes", requireAuth, requireDishStaff, adminDishesRouter);
+  app.use("/api/chefs", requireAuth, adminOrEditorRead, chefsRouter);
+  app.use("/api/ingredients", requireAuth, adminOrEditorRead, ingredientsRouter);
   app.use("/api/admin/bookings", requireAuth, requireAdmin, adminBookingsRouter);
   app.use("/api/stats", statsRouter);
   app.use("/api/options", optionsRouter);

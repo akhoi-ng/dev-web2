@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { adminDishesApi, getOptions } from "../../../api/index.js";
-import { useAuth } from "../../../auth/AuthContext.jsx";
+import { isAdminUser, useAuth } from "../../../auth/AuthContext.jsx";
 import DishStatusBadge, { canCreateDishUi } from "./DishStatusBadge.jsx";
 import DataStatus from "../../../components/DataStatus.jsx";
 import DishImage from "../../../components/DishImage.jsx";
@@ -135,8 +135,10 @@ export default function DishListPage() {
                     </td>
                     <td className="px-4 py-3 text-stone-600" data-label="Danh mục">{d.category || "—"}</td>
                     <td className="px-4 py-3" data-label="Đầu bếp">
-                      {d.chef ? (
+                      {d.chef && isAdminUser(user) ? (
                         <Link to={"/admin/chefs/" + d.chef.id} className="text-stone-700 hover:text-brand-700">{d.chef.name}</Link>
+                      ) : d.chef ? (
+                        <span className="text-stone-700">{d.chef.name}</span>
                       ) : (
                         <span className="text-stone-400">Chưa phân công</span>
                       )}

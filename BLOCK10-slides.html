@@ -123,11 +123,11 @@
       </ul>
     </div>
     <div class="card">
-      <h3><span class="num">2</span>Quản trị chỉ dành cho Admin</h3>
+      <h3><span class="num">2</span>Phân quyền khu quản trị</h3>
       <ul>
-        <li>Nút "Quản trị" chỉ hiện với Admin; role khác mở <code>/admin/*</code> thấy trang <code>403</code></li>
-        <li>API chặn thật: <code>/api/admin/*</code>, <code>chefs</code>, <code>ingredients</code>, ghi món → <code>403</code></li>
-        <li>Role đọc từ DB mỗi request: hạ quyền Admin là token đang dùng bị chặn ngay</li>
+        <li><strong>Admin</strong> mọi trang; <strong>Editor</strong> chỉ khu món ăn; <strong>Viewer</strong> mở <code>/admin/*</code> thấy trang <code>403</code></li>
+        <li>Editor: tạo món nháp, sửa món <strong>nháp của đầu bếp mình</strong> (ABAC trong WHERE của UPDATE); xóa, đầu bếp, đặt bàn → <code>403</code></li>
+        <li>Role, <code>chefId</code> đọc từ DB mỗi request: hạ quyền là token đang dùng bị chặn ngay</li>
       </ul>
     </div>
     <div class="card tint">
@@ -141,11 +141,11 @@
   </div>
 
   <div class="stats">
-    <div class="stat main"><div class="v">66 <small style="color:#E9DCD5">dòng mới</small></div><div class="l">nghiệm thu Block 10: 46 MFA · 20 quản trị chỉ Admin</div></div>
+    <div class="stat main"><div class="v">73 <small style="color:#E9DCD5">dòng mới</small></div><div class="l">nghiệm thu Block 10: 46 MFA · 27 phân quyền quản trị</div></div>
     <div class="stat"><div class="v ok">154<small>/154</small></div><div class="l">API xác thực<br><code>npm run acceptance:auth</code></div></div>
     <div class="stat"><div class="v ok">74<small>/74</small></div><div class="l">API CRUD<br>Block 6–7 giữ nguyên</div></div>
     <div class="stat"><div class="v ok">205<small>/205</small></div><div class="l">bản SSR<br>Block 9 không bị ảnh hưởng</div></div>
-    <div class="stat"><div class="v ok">168</div><div class="l">unit test PASS<br>API 99 · web 49 · SSR 20</div></div>
+    <div class="stat"><div class="v ok">175</div><div class="l">unit test PASS<br>API 105 · web 50 · SSR 20</div></div>
   </div>
 
   <p class="limits"><strong>Còn lại:</strong> tải lại trang ở bước nhập mã thì mất challenge (chỉ nằm trong bộ nhớ SPA), phải đăng nhập lại; TOTP vẫn bị trang giả chuyển tiếp trong 30 giây.</p>
@@ -153,9 +153,9 @@
   <div class="foot"><span>Lửa Hồng · Block 10 — MFA và phân quyền cho bản SPA</span><span>Báo cáo</span></div>
 
   <div class="notes">
-    Bản SSR đã có RBAC, ABAC và MFA từ Block 9 Bài 2; bản SPA khi đó chỉ chặn: tài khoản bật MFA nhận <b>MFA_REQUIRED</b>. Block 10 đưa MFA sang API và React SPA, và thu khu vực quản trị của bản SPA về chỉ Admin: giao diện ẩn lối vào và hiện trang 403, còn API trả 403 cho mọi endpoint quản trị với role khác (ẩn nút chỉ là giao diện, chặn thật nằm ở server). Viewer và Editor vẫn đăng nhập, xem thực đơn và bật 2FA ở /account/security. Handler ghi món vẫn giữ điều kiện ABAC như lớp kiểm tra thứ hai.
+    Bản SSR đã có RBAC, ABAC và MFA từ Block 9 Bài 2; bản SPA khi đó chỉ chặn: tài khoản bật MFA nhận <b>MFA_REQUIRED</b>. Block 10 đưa MFA sang API và React SPA, và phân quyền khu vực quản trị của bản SPA: Admin dùng mọi trang; Editor (tài khoản đầu bếp) chỉ vào khu món ăn, tạo món nháp và sửa món nháp của đầu bếp mình theo đúng ABAC của bản SSR, không xóa; Viewer không vào khu quản trị. Giao diện ẩn lối vào và hiện trang 403, còn API trả 403 (ẩn nút chỉ là giao diện, chặn thật nằm ở server: cổng theo role và method ở app.js, điều kiện ABAC trong WHERE của câu UPDATE). Mọi tài khoản vẫn đăng nhập, xem thực đơn và bật 2FA ở /account/security.
     Luồng đăng nhập theo slide "MFA khi client là SPA" của deck: API không có session nên trạng thái chờ MFA là một challenge ngắn hạn trả trong JSON, chỉ <code>POST /api/auth/mfa</code> nhận. Code mới: <code>api/src/auth/mfa.js</code>, <code>api/src/routes/mfa.js</code>, <code>api/src/auth/policy.js</code>, <code>api/src/routes/dishes.js</code>; SPA thêm <code>/login/mfa</code> và <code>/account/security</code>.
-    Nghiệm thu sinh mã TOTP từ secret key đọc ở response thiết lập, như một ứng dụng Authenticator. Các dòng tiêu biểu: mã dùng lại bị từ chối, lần sai thứ 5 trả 401 MFA_TOO_MANY_ATTEMPTS, mã khôi phục dùng lần hai bị từ chối, reset password xong vẫn phải qua MFA; Viewer và Editor gọi 5 endpoint quản trị đều 403, sửa hay xóa món bị 403 và dữ liệu không đổi; hạ Admin xuống Editor trong DB thì token đang dùng bị 403 ngay.
+    Nghiệm thu sinh mã TOTP từ secret key đọc ở response thiết lập, như một ứng dụng Authenticator. Các dòng tiêu biểu: mã dùng lại bị từ chối, lần sai thứ 5 trả 401 MFA_TOO_MANY_ATTEMPTS, mã khôi phục dùng lần hai bị từ chối, reset password xong vẫn phải qua MFA; Viewer gọi 5 endpoint quản trị đều 403; Editor tạo món thì món luôn là nháp của đầu bếp mình, sửa được món nháp của mình, còn sửa món đã đăng, món của đầu bếp khác hay xóa món đều 403 và dữ liệu không đổi; hạ Admin xuống Viewer trong DB thì token đang dùng bị 403 ngay.
   </div>
 </section>
 

@@ -8,12 +8,15 @@
 //
 // Block 10: tài khoản bật MFA chỉ nhận token sau bước nhập mã (POST /api/auth/mfa), và bật MFA làm
 // tăng tokenVersion nên token cấp trước đó bị từ chối ở bước 4. Không còn chặn MFA_REQUIRED ở đây.
-// Phân quyền: khu vực quản trị của bản SPA chỉ dành cho Admin (requireAdmin, xem app.js). Viewer và
-// Editor vẫn đăng nhập, xem /api/auth/me, quản lý MFA của mình; mọi endpoint quản trị trả 403.
+// Phân quyền khu vực quản trị của bản SPA (xem app.js):
+//   Admin   mọi endpoint quản trị
+//   Editor  chỉ khu món ăn: xem (cả món nháp), tạo món nháp của đầu bếp mình, sửa món nháp của đầu
+//           bếp mình (ABAC trong handler); đọc danh sách đầu bếp, nguyên liệu để điền form. Không xóa.
+//   Viewer  không vào khu quản trị (403); vẫn đăng nhập, xem /api/auth/me, quản lý MFA của mình.
 const prisma = require("../db/prisma");
 const { bearerToken, verifyAccessToken } = require("./tokens");
 const { unauthenticated, forbidden } = require("../http/respond");
-const { isAdmin } = require("./policy");
+const { isAdmin, can, actionFor } = require("./policy");
 
 const USER_FIELDS = {
   id: true,
@@ -55,7 +58,9 @@ function protectMethods(methods) {
   return (req, res, next) => (set.has(req.method) ? requireAuth(req, res, next) : next());
 }
 
-const ADMIN_ONLY = "Chỉ tài khoản quản trị viên được dùng trang quản trị";
+const ADMIN_ONLY = "Chỉ tài khoản quản trị viên được dùng chức năng này";
+const STAFF_ONLY = "Tài khoản của bạn không có quyền vào khu vực quản trị";
+const NOT_ALLOWED = "Tài khoản của bạn không được thực hiện thao tác này";
 
 // Chỉ Admin (chạy SAU requireAuth). Role đọc từ DB ở requireAuth, không lấy từ token hay body.
 function requireAdmin(req, res, next) {
@@ -69,4 +74,27 @@ function adminFor(methods) {
   return (req, res, next) => (set.has(req.method) ? requireAdmin(req, res, next) : next());
 }
 
-module.exports = { requireAuth, protectMethods, requireAdmin, adminFor };
+// Khu món ăn (chạy SAU requireAuth): role phải là editor hoặc admin (viewer -> 403), rồi RBAC theo
+// method: GET đọc, POST tạo, PATCH sửa, DELETE xóa (editor xóa -> 403). Điều kiện ABAC của Editor
+// (đầu bếp của mình, món nháp) nằm trong handler ghi món (routes/dishes.js).
+function requireDishStaff(req, res, next) {
+  const role = req.user && req.user.role;
+  if (role !== "editor" && role !== "admin") return forbidden(res, "FORBIDDEN", STAFF_ONLY);
+  if (!can(req.user, actionFor(req.method))) return forbidden(res, "FORBIDDEN", NOT_ALLOWED);
+  next();
+}
+
+// Chỉ áp requireDishStaff cho các method trong danh sách (GET công khai của /api/dishes đi tiếp)
+function dishStaffFor(methods) {
+  const set = new Set(methods);
+  return (req, res, next) => (set.has(req.method) ? requireDishStaff(req, res, next) : next());
+}
+
+// Đầu bếp, nguyên liệu: Editor chỉ đọc (để điền form món ăn), Admin mọi method
+function adminOrEditorRead(req, res, next) {
+  if (isAdmin(req.user)) return next();
+  if (req.user && req.user.role === "editor" && actionFor(req.method) === "read") return next();
+  forbidden(res, "FORBIDDEN", req.user && req.user.role === "editor" ? ADMIN_ONLY : STAFF_ONLY);
+}
+
+module.exports = { requireAuth, protectMethods, requireAdmin, adminFor, requireDishStaff, dishStaffFor, adminOrEditorRead };
