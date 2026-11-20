@@ -428,6 +428,6 @@ Nên chạy trên database thử nghiệm.
 
 ## 13. Bằng chứng
 
-Video demo và ảnh chụp (Network, Application, bản ghi database, request trực tiếp) nằm trong thư mục
-Google Drive ở [`evidence/ggdrive_link.txt`](evidence/ggdrive_link.txt). OTP, token, password, secret
-TOTP và mã khôi phục đã được che trước khi nộp.
+Video demo Block 10 nằm trong thư mục Google Drive "Block 10", link ở
+[`evidence/ggdrive_link.txt`](evidence/ggdrive_link.txt). Các file trong `evidence/` của repo là bằng
+chứng của Block 5.
