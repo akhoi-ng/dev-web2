@@ -33,7 +33,7 @@ export function useSubmit() {
         // Lớp gọi API đã thử refresh và xóa token; RequireAuth đưa người dùng về /login
         setFormError(MSG_UNAUTHENTICATED);
       } else if (error instanceof ApiError && error.status === 403) {
-        setFormError(MSG_FORBIDDEN); // giữ đăng nhập
+        setFormError(error.message || MSG_FORBIDDEN); // giữ đăng nhập; API nói rõ lý do (vd. ABAC)
       } else if (error instanceof ApiError && error.status === 429) {
         setFormError(MSG_RATE_LIMITED);
       } else {

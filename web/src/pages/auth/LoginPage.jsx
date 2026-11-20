@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client.js";
 import FieldError from "../../components/FieldError.jsx";
-import { safeNext, useAuth } from "../../auth/AuthContext.jsx";
+import { landingFor, safeNext, useAuth } from "../../auth/AuthContext.jsx";
 import Recaptcha from "../../auth/Recaptcha.jsx";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle.js";
 import { AuthCard, Notice, describeError, field, isCaptchaError, label, linkCls, primaryBtn } from "./shared.jsx";
@@ -11,13 +11,15 @@ const NOTICES = {
   activated: "Tài khoản đã được kích hoạt. Hãy đăng nhập.",
   reset: "Mật khẩu đã được đặt lại. Hãy đăng nhập bằng mật khẩu mới.",
   expired: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+  mfaExpired: "Phiên xác thực hai bước đã hết hạn hoặc không còn hiệu lực. Hãy đăng nhập lại.",
+  mfaFailed: "Bạn đã nhập sai mã xác thực quá nhiều lần. Hãy đăng nhập lại.",
 };
 
 // /login — POST /api/auth/login. CAPTCHA chỉ hiện khi server báo bộ đếm sai đã tới ngưỡng
 // (captchaRequired, CAPTCHA_REQUIRED, INVALID_CAPTCHA); server tự kiểm tra lại, không tin giao diện.
 export default function LoginPage() {
   useDocumentTitle("Đăng nhập");
-  const { status, login } = useAuth();
+  const { status, user, login } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
@@ -32,7 +34,7 @@ export default function LoginPage() {
   const [fields, setFields] = useState({});
   const captchaRef = useRef(null);
 
-  if (status === "authed") return <Navigate to={next || "/admin/dishes"} replace />;
+  if (status === "authed" && !pending) return <Navigate to={landingFor(next, user)} replace />;
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -41,8 +43,13 @@ export default function LoginPage() {
     setError(null);
     setFields({});
     try {
-      await login({ email, password, ...(needCaptcha ? { captcha } : {}) });
-      navigate(next || "/admin/dishes", { replace: true });
+      const result = await login({ email, password, ...(needCaptcha ? { captcha } : {}) });
+      if (result.mfa) {
+        // Password đúng nhưng chưa có token: sang bước nhập mã, challenge đi theo state của router
+        navigate("/login/mfa", { state: { ...result.mfa, next, email } });
+        return;
+      }
+      navigate(landingFor(next, result.user), { replace: true });
     } catch (err) {
       setPassword("");
       if (err instanceof ApiError && err.code === "VALIDATION_FAILED") setFields(err.fields || {});
@@ -65,7 +72,11 @@ export default function LoginPage() {
         </>
       }
     >
-      {noticeKey && !error && <Notice tone={noticeKey === "expired" ? "info" : "ok"}>{NOTICES[noticeKey]}</Notice>}
+      {noticeKey && !error && (
+        <Notice tone={["activated", "reset"].includes(noticeKey) ? "ok" : "info"} code={noticeKey.startsWith("mfa") ? noticeKey : undefined}>
+          {NOTICES[noticeKey]}
+        </Notice>
+      )}
       {error && (
         <Notice code={error.code}>
           {error.message}

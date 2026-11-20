@@ -3,15 +3,17 @@
 //   2. Verify chữ ký HS256, iss, aud, exp     sai chữ ký              -> 401 UNAUTHENTICATED
 //                                             quá exp                 -> 401 TOKEN_EXPIRED
 //   3. Tải user theo sub từ DB                không còn / chưa active -> 401 UNAUTHENTICATED
-//   4. So tokenVersion                        đã đổi (reset password, đăng xuất mọi nơi) -> 401
-//   5. Tài khoản đã bật MFA (Bài 2, chỉ có trên bản SSR)                          -> 401
-// Qua đủ các bước thì req.user là bản ghi từ DB (role lấy ở đây, không lấy từ token hay body).
-// Block 9 Bài 2: requirePermission phân quyền theo role giống bản SSR (src/auth/policy.js):
-// viewer chỉ đọc, editor thêm tạo/sửa, admin thêm xóa. Ghi món ăn qua API chỉ dành cho admin vì
-// quy tắc ABAC (editor chỉ sửa món draft của đầu bếp mình) chỉ cài trên bản SSR.
+//   4. So tokenVersion                        đã đổi (reset password, đăng xuất mọi nơi, bật/tắt MFA) -> 401
+// Qua đủ các bước thì req.user là bản ghi từ DB (role, chefId lấy ở đây, không lấy từ token hay body).
+//
+// Block 10: tài khoản bật MFA chỉ nhận token sau bước nhập mã (POST /api/auth/mfa), và bật MFA làm
+// tăng tokenVersion nên token cấp trước đó bị từ chối ở bước 4. Không còn chặn MFA_REQUIRED ở đây.
+// Phân quyền: khu vực quản trị của bản SPA chỉ dành cho Admin (requireAdmin, xem app.js). Viewer và
+// Editor vẫn đăng nhập, xem /api/auth/me, quản lý MFA của mình; mọi endpoint quản trị trả 403.
 const prisma = require("../db/prisma");
 const { bearerToken, verifyAccessToken } = require("./tokens");
 const { unauthenticated, forbidden } = require("../http/respond");
+const { isAdmin } = require("./policy");
 
 const USER_FIELDS = {
   id: true,
@@ -23,13 +25,6 @@ const USER_FIELDS = {
   tokenVersion: true,
   mfaEnabled: true,
 };
-
-const PERMISSIONS = {
-  viewer: new Set(["read"]),
-  editor: new Set(["read", "create", "update"]),
-  admin: new Set(["read", "create", "update", "delete"]),
-};
-const ACTIONS = { GET: "read", HEAD: "read", POST: "create", PATCH: "update", PUT: "update", DELETE: "delete" };
 
 function requireAuth(req, res, next) {
   const token = bearerToken(req.get("authorization"));
@@ -48,8 +43,6 @@ function requireAuth(req, res, next) {
       if (!user || user.status !== "active" || user.tokenVersion !== result.ver) {
         return unauthenticated(res, "UNAUTHENTICATED", "Token không còn hiệu lực");
       }
-      // Bật MFA thì tokenVersion đã tăng; kiểm tra thêm để chắc chắn API không bỏ qua được MFA
-      if (user.mfaEnabled) return unauthenticated(res, "MFA_REQUIRED", "Tài khoản bật MFA, hãy đăng nhập trên bản SSR");
       req.user = user;
       next();
     })
@@ -62,18 +55,18 @@ function protectMethods(methods) {
   return (req, res, next) => (set.has(req.method) ? requireAuth(req, res, next) : next());
 }
 
-// Phân quyền theo method (chạy SAU requireAuth): GET đọc, POST tạo, PATCH sửa, DELETE xóa
-function requirePermission(req, res, next) {
-  const allowed = PERMISSIONS[req.user && req.user.role];
-  const action = ACTIONS[req.method];
-  if (allowed && action && allowed.has(action)) return next();
-  forbidden(res);
-}
+const ADMIN_ONLY = "Chỉ tài khoản quản trị viên được dùng trang quản trị";
 
-// Chỉ admin (ghi món ăn qua API, xem chú thích đầu file)
+// Chỉ Admin (chạy SAU requireAuth). Role đọc từ DB ở requireAuth, không lấy từ token hay body.
 function requireAdmin(req, res, next) {
-  if (req.user && req.user.role === "admin") return next();
-  forbidden(res, "FORBIDDEN", "Chỉ quản trị viên được ghi món ăn qua API; Editor dùng bản SSR");
+  if (isAdmin(req.user)) return next();
+  forbidden(res, "FORBIDDEN", ADMIN_ONLY);
 }
 
-module.exports = { requireAuth, protectMethods, requirePermission, requireAdmin };
+// Chỉ yêu cầu Admin cho các method trong danh sách (method khác đi tiếp, ví dụ GET công khai)
+function adminFor(methods) {
+  const set = new Set(methods);
+  return (req, res, next) => (set.has(req.method) ? requireAdmin(req, res, next) : next());
+}
+
+module.exports = { requireAuth, protectMethods, requireAdmin, adminFor };

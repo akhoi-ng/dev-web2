@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import Logo from "./Logo.jsx";
-import { useAuth } from "../auth/AuthContext.jsx";
+import { isAdminUser, useAuth } from "../auth/AuthContext.jsx";
+import { AdminOnly } from "../auth/RequireAdmin.jsx";
 import { RESTAURANT } from "../lib/restaurant.js";
 import { formatPhone } from "../lib/format.js";
 
@@ -64,7 +65,8 @@ function AccountArea({ compact = false }) {
   if (compact) {
     return (
       <>
-        <span className="truncate px-3 pt-1 text-xs font-medium text-stone-500" title={name}>{name}</span>
+        <span className="truncate px-3 pt-1 text-xs font-medium text-stone-500" title={name}>{name} · {user.role}</span>
+        <Link to="/account/security" className={mobileLink}>Bảo mật tài khoản</Link>
         <button type="button" onClick={onLogout} className={mobileLink + " text-left"}>Đăng xuất</button>
         <button type="button" onClick={onLogoutAll} className={mobileLink + " text-left text-brand-700"}>Đăng xuất mọi nơi</button>
       </>
@@ -77,6 +79,10 @@ function AccountArea({ compact = false }) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
       </summary>
       <div className="absolute right-0 top-full z-30 mt-2 flex w-56 flex-col rounded-2xl border border-[#EADBD2] bg-white p-2 font-semibold shadow-lg">
+        <span className="px-3 py-1 text-xs font-medium text-stone-500">
+          Role {user.role}{user.mfaEnabled ? " · MFA bật" : ""}
+        </span>
+        <Link to="/account/security" className="flex min-h-10 items-center rounded-xl px-3 hover:bg-brand-50">Bảo mật tài khoản</Link>
         <button type="button" onClick={onLogout} className="flex min-h-10 items-center rounded-xl px-3 text-left hover:bg-brand-50">Đăng xuất</button>
         <button type="button" onClick={onLogoutAll} className="flex min-h-10 items-center rounded-xl px-3 text-left text-brand-700 hover:bg-brand-50">Đăng xuất mọi nơi</button>
       </div>
@@ -84,9 +90,13 @@ function AccountArea({ compact = false }) {
   );
 }
 
+// isAdmin: đang ở trang /admin/*. canAdmin: tài khoản Admin (Block 10: chỉ Admin thấy lối vào quản trị;
+// ẩn chỉ là giao diện, API quản trị tự trả 403 với role khác)
 function Header({ isAdmin }) {
   const menuRef = useRef(null);
   const { pathname } = useLocation();
+  const { status, user } = useAuth();
+  const canAdmin = status === "authed" && isAdminUser(user);
 
   // Menu thả xuống trên điện thoại tự đóng sau khi chuyển trang
   useEffect(() => {
@@ -117,9 +127,13 @@ function Header({ isAdmin }) {
               <Link to="/dishes#thuc-don" className={mobileLink}>Thực đơn</Link>
               <Link to="/about" className={mobileLink}>Về chúng tôi</Link>
               <Link to="/bookings/new" className={mobileLink}>Đặt bàn</Link>
-              <div className="my-2 border-t border-stone-100"></div>
-              <Link to="/dishes" className={`flex min-h-11 items-center rounded-xl px-3 ${isAdmin ? "text-stone-500 hover:bg-stone-50" : "bg-stone-100"}`}>Trang khách hàng</Link>
-              <Link to="/admin/dishes" className={`flex min-h-11 items-center rounded-xl px-3 ${isAdmin ? "bg-stone-100" : "text-stone-500 hover:bg-stone-50"}`}>Trang quản trị</Link>
+              {canAdmin && (
+                <>
+                  <div className="my-2 border-t border-stone-100"></div>
+                  <Link to="/dishes" className={`flex min-h-11 items-center rounded-xl px-3 ${isAdmin ? "text-stone-500 hover:bg-stone-50" : "bg-stone-100"}`}>Trang khách hàng</Link>
+                  <Link to="/admin/dishes" className={`flex min-h-11 items-center rounded-xl px-3 ${isAdmin ? "bg-stone-100" : "text-stone-500 hover:bg-stone-50"}`}>Trang quản trị</Link>
+                </>
+              )}
               <div className="my-2 border-t border-stone-100"></div>
               <AccountArea compact />
             </nav>
@@ -142,7 +156,8 @@ function Header({ isAdmin }) {
             </>
           )}
 
-          {/* Chuyển nhanh giữa trang khách và trang quản trị */}
+          {/* Chuyển nhanh giữa trang khách và trang quản trị (chỉ Admin) */}
+          {canAdmin && (
           <div className="flex rounded-full bg-stone-100 p-1 text-sm font-medium">
             <Link
               to="/dishes"
@@ -157,6 +172,7 @@ function Header({ isAdmin }) {
               Quản trị
             </Link>
           </div>
+          )}
           <AccountArea />
         </div>
       </div>
@@ -231,7 +247,7 @@ function Footer() {
           <h2 id="footer-help" className={footHeading}>Hỗ trợ</h2>
           <Link to="/bookings/new" className={footLink}>Đặt bàn</Link>
           <Link to="/about" className={footLink}>Về chúng tôi</Link>
-          <Link to="/admin/dishes" className={footLink}>Trang quản trị</Link>
+          <AdminOnly><Link to="/admin/dishes" className={footLink}>Trang quản trị</Link></AdminOnly>
         </nav>
 
         <div className="col-span-2 flex flex-col gap-3 text-sm lg:col-span-1">
@@ -263,7 +279,9 @@ function Footer() {
 
 export default function Layout() {
   const { pathname, search, hash, key } = useLocation();
-  const isAdmin = pathname.startsWith("/admin");
+  const { user } = useAuth();
+  // Header kiểu quản trị chỉ khi Admin đang ở /admin/*; role khác mở /admin/* thấy header khách + trang 403
+  const isAdmin = pathname.startsWith("/admin") && isAdminUser(user);
 
   // SPA không tự cuộn: về đầu trang khi đổi trang hoặc đổi query (lọc, phân trang);
   // nếu URL có #mục thì cuộn tới mục đó, thử lại trong ~1 giây vì nội dung tải bất đồng bộ.

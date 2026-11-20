@@ -111,6 +111,8 @@ export function createClient(baseUrl, fetchImpl = globalThis.fetch, auth = null)
         message: error && error.message,
       });
       if (error && typeof error.captchaRequired === "boolean") err.captchaRequired = error.captchaRequired;
+      // Block 10: bước nhập mã MFA báo số lượt thử còn lại
+      if (error && Number.isInteger(error.attemptsLeft)) err.attemptsLeft = error.attemptsLeft;
       throw err;
     }
     return { data: payload.data, meta: payload.meta };

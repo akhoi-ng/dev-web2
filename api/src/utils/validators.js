@@ -1,6 +1,7 @@
 const { str, isHttpUrl, asObject, todayInVietnam, TIME_ZONE } = require("./helpers");
 
 const DISH_CATEGORIES = ["Khai vị", "Món chính", "Món phụ", "Tráng miệng", "Đồ uống"];
+const DISH_STATUSES = ["draft", "published"];
 const INGREDIENT_UNITS = ["kg", "gram", "lít", "ml", "bó", "quả", "ổ", "hộp", "gói"];
 const MAX_PRICE = 2147483647; // Giới hạn kiểu Int của PostgreSQL
 const MAX_QUANTITY = 100000;
@@ -147,7 +148,12 @@ function optionalText({ label, max, tooLong, invalid }) {
  * Ngoài { fields, data } còn trả về `recipe`: [{ ingredientId, quantity }]
  * (undefined khi partial và body không có khóa `ingredients`).
  */
-function validateDish(body, { chefs = [], ingredients = [], partial = false } = {}) {
+/*
+ * Block 10 – options.canAssign (mặc định true): người gọi được chọn đầu bếp phụ trách và trạng thái
+ * draft/published (Admin). false (Editor): chefId và status trong body bị BỎ QUA, không có trong
+ * data; route tự gán chefId của tài khoản và status draft khi tạo món.
+ */
+function validateDish(body, { chefs = [], ingredients = [], partial = false, canAssign = true } = {}) {
   const ctx = newCtx(body, partial);
 
   check(ctx, "name", requiredText({
@@ -187,12 +193,22 @@ function validateDish(body, { chefs = [], ingredients = [], partial = false } = 
     return [null, v];
   });
 
-  // Đầu bếp: null / không gửi = chưa phân công; có giá trị thì phải là id đầu bếp đang tồn tại
-  check(ctx, "chefId", (v) => {
-    if (v === undefined || v === null) return [null, null];
-    if (!Number.isInteger(v) || !chefs.some((c) => c.id === v)) return ["Đầu bếp phụ trách không hợp lệ."];
-    return [null, v];
-  });
+  if (canAssign) {
+    // Đầu bếp: null / không gửi = chưa phân công; có giá trị thì phải là id đầu bếp đang tồn tại
+    check(ctx, "chefId", (v) => {
+      if (v === undefined || v === null) return [null, null];
+      if (!Number.isInteger(v) || !chefs.some((c) => c.id === v)) return ["Đầu bếp phụ trách không hợp lệ."];
+      return [null, v];
+    });
+
+    // Trạng thái đăng: không gửi = route quyết định mặc định
+    check(ctx, "status", (v) => {
+      if (v === undefined) return [null, undefined];
+      if (!DISH_STATUSES.includes(v)) return ["Trạng thái phải là draft hoặc published."];
+      return [null, v];
+    });
+    if (ctx.data.status === undefined) delete ctx.data.status;
+  }
 
   let recipe;
   if (!partial || Object.hasOwn(ctx.body, "ingredients")) {
@@ -350,6 +366,7 @@ function validateBookingStatus(body) {
 
 module.exports = {
   DISH_CATEGORIES,
+  DISH_STATUSES,
   DISH_SORTS,
   parseDishSort,
   SEARCH_MODES,

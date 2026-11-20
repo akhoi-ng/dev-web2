@@ -140,3 +140,28 @@ test("INVALID_CREDENTIALS mang cờ captchaRequired", async () => {
     return true;
   });
 });
+
+// Block 10: bước nhập mã MFA
+test("INVALID_MFA_CODE mang số lượt thử còn lại", async () => {
+  const client = createClient(BASE, async () =>
+    json({ ok: false, error: { code: "INVALID_MFA_CODE", message: "m", attemptsLeft: 3 } }), fakeAuth());
+  await assert.rejects(client.request("POST", "/api/auth/mfa", { body: {}, anonymous: true }), (err) => {
+    assert.equal(err.kind, "business");
+    assert.equal(err.code, "INVALID_MFA_CODE");
+    assert.equal(err.attemptsLeft, 3);
+    return true;
+  });
+});
+
+test("challenge MFA hết hạn: 401 ở route anonymous không thử refresh", async () => {
+  let refreshed = 0;
+  const auth = { ...fakeAuth(), refresh: async () => { refreshed += 1; return true; } };
+  const client = createClient(BASE, async () =>
+    json({ ok: false, error: { code: "MFA_CHALLENGE_EXPIRED", message: "m" } }, 401), auth);
+  await assert.rejects(client.request("POST", "/api/auth/mfa", { body: {}, anonymous: true }), (err) => {
+    assert.equal(err.status, 401);
+    assert.equal(err.code, "MFA_CHALLENGE_EXPIRED");
+    return true;
+  });
+  assert.equal(refreshed, 0);
+});

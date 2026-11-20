@@ -49,9 +49,23 @@ const POLICY = {
     forgotIp: { limit: 10, windowMs: HOUR },
     resetIp: { limit: 30, windowMs: 15 * MINUTE },
     refreshIp: { limit: 120, windowMs: 15 * MINUTE },
+    mfaIp: { limit: 50, windowMs: 15 * MINUTE },
   },
 
   reset: { ttlMs: 15 * MINUTE },
+
+  // Block 10: MFA (TOTP, RFC 6238) cho bản SPA. Cùng số liệu với bản SSR (src/auth/config.js) vì hai
+  // bản dùng chung bảng users, mfa_challenges, recovery_codes và auth_throttles.
+  mfa: {
+    issuer: "Lửa Hồng",
+    window: 1, // chấp nhận mã của bước liền trước / liền sau (lệch đồng hồ tối đa 30 giây)
+    challengeTtlMs: 5 * MINUTE, // trạng thái chờ MFA sau khi password đúng
+    maxAttempts: 5, // 5 lần nhập mã sai trong một lần chờ -> hủy, phải đăng nhập lại từ đầu
+    userAttempts: { limit: 10, windowMs: 15 * MINUTE }, // mọi lần nhập mã của một tài khoản
+    setupAttempts: { limit: 10, windowMs: 15 * MINUTE }, // xác nhận mã khi bật MFA
+    reauthAttempts: { limit: 5, windowMs: 15 * MINUTE }, // xác thực lại khi thay / tắt MFA, tạo lại mã khôi phục
+    recoveryCodes: 10,
+  },
 };
 
 // Cookie Secure bật mặc định (browser vẫn nhận cookie Secure trên http://localhost).
@@ -127,10 +141,15 @@ const secret = () => requireSecret("SESSION_SECRET");
 // Khóa ký JWT, tách khỏi khóa OTP. Chỉ nằm ở backend, không bao giờ vào bundle của SPA.
 const jwtSecret = () => requireSecret("JWT_SECRET");
 
+// Khóa mã hóa TOTP secret trong DB (AES-256-GCM). Phải trùng MFA_ENC_KEY của bản SSR: secret do
+// bản này lưu thì bản kia phải giải mã được.
+const mfaKey = () => requireSecret("MFA_ENC_KEY");
+
 // Gọi lúc khởi động để báo thiếu cấu hình sớm thay vì lỗi ở request đầu tiên
 function checkAuthConfig() {
   secret();
   jwtSecret();
+  mfaKey();
   accessTokenTtlSec();
   if (process.env.JWT_SECRET === process.env.SESSION_SECRET) {
     throw new Error("JWT_SECRET phải khác SESSION_SECRET");
@@ -152,5 +171,6 @@ module.exports = {
   accessTokenTtlSec,
   secret,
   jwtSecret,
+  mfaKey,
   checkAuthConfig,
 };

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { AdminOnly } from "../auth/RequireAdmin.jsx";
 
 export function LoadingState() {
   return (
@@ -36,7 +37,7 @@ export function NotFoundPanel({ text = "Trang hoặc bản ghi bạn tìm không
       <p className="mt-2 text-stone-500">{text}</p>
       <div className="mt-8 flex flex-wrap justify-center gap-3">
         <Link to="/dishes" className="rounded-xl bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700">Về thực đơn</Link>
-        <Link to="/admin/dishes" className="rounded-xl border border-stone-300 bg-white px-5 py-3 font-semibold hover:bg-stone-100">Về trang quản trị</Link>
+        <AdminOnly><Link to="/admin/dishes" className="rounded-xl border border-stone-300 bg-white px-5 py-3 font-semibold hover:bg-stone-100">Về trang quản trị</Link></AdminOnly>
       </div>
     </div>
   );

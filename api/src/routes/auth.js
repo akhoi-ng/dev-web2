@@ -6,6 +6,9 @@
 //   POST /api/auth/activate          { email, otp }
 //   POST /api/auth/activate/resend   { email }
 //   POST /api/auth/login             { email, password, captcha? }  -> accessToken + cookie rt
+//                                                                       (bật MFA: { next: "mfa", challenge })
+//   POST /api/auth/mfa               { challenge, code }             -> accessToken + cookie rt (Block 10)
+//   /api/auth/mfa/*                  Bearer: bật / tắt MFA, mã khôi phục (routes/mfa.js)
 //   POST /api/auth/refresh           cookie rt                       -> accessToken mới + rt mới
 //   POST /api/auth/logout            cookie rt                       -> thu hồi family của rt
 //   POST /api/auth/logout-all        Bearer                          -> tokenVersion + 1, thu hồi mọi rt,
@@ -20,13 +23,16 @@ const express = require("express");
 const prisma = require("../db/prisma");
 const { ok, fail, validationFailed, unauthenticated, rateLimited } = require("../http/respond");
 const { asyncHandler, asObject } = require("../utils/helpers");
-const { POLICY, cookieSecure, refreshSameSite, corsOrigins, recaptchaConfig } = require("../auth/config");
+const { POLICY, corsOrigins, recaptchaConfig } = require("../auth/config");
 const throttle = require("../auth/throttle");
 const { verifyCaptcha, CaptchaUnavailableError } = require("../auth/captcha");
 const service = require("../auth/service");
 const tokens = require("../auth/tokens");
+const mfa = require("../auth/mfa");
 const { requireAuth } = require("../auth/middleware");
 const { normalizeEmail, emailError, validateRegistration, validateNewPassword, text, raw } = require("../auth/accounts");
+const { setRefreshCookie, clearRefreshCookie, issueTokens } = require("../http/refresh-cookie");
+const mfaRouter = require("./mfa");
 
 const router = express.Router();
 const RT = POLICY.refreshToken;
@@ -66,26 +72,6 @@ async function rejectCaptcha(req, res, body) {
   }
 }
 
-// ───────────────────────────── cookie refresh token ─────────────────────────────
-
-function refreshCookieOptions(expires) {
-  return {
-    httpOnly: true, // JavaScript của trang (kể cả mã XSS) không đọc được
-    secure: cookieSecure() || refreshSameSite() === "none",
-    sameSite: refreshSameSite(),
-    path: RT.path, // chỉ gửi cho /api/auth/*, không đi kèm request CRUD
-    ...(expires ? { expires } : {}),
-  };
-}
-
-function setRefreshCookie(res, token, expiresAt) {
-  res.cookie(RT.cookie, token, refreshCookieOptions(expiresAt));
-}
-
-function clearRefreshCookie(res) {
-  res.clearCookie(RT.cookie, refreshCookieOptions());
-}
-
 /*
  * /refresh và /logout dùng cookie mà browser tự gắn, nên chặn thêm request từ origin lạ
  * (phòng CSRF). Ngoài ra: cookie SameSite, POST bắt buộc Content-Type JSON (form của trang khác
@@ -98,13 +84,6 @@ function sameOriginOnly(req, res, next) {
     return res.status(403).json({ ok: false, error: { code: "FORBIDDEN", message: "Origin không được phép" } });
   }
   next();
-}
-
-// Cấp cặp token cho user đã qua đủ điều kiện (password đúng + active)
-async function issueTokens(res, user) {
-  const refresh = await tokens.issueRefreshToken(user.id);
-  setRefreshCookie(res, refresh.token, refresh.expiresAt);
-  return tokens.signAccessToken(user);
 }
 
 // ───────────────────────────── CAPTCHA config ─────────────────────────────
@@ -221,15 +200,18 @@ router.post(
       // Chỉ trả sau khi password đúng, nên không lộ tài khoản; không có accessToken
       return fail(res, "ACCOUNT_NOT_ACTIVATED", "Tài khoản chưa kích hoạt. Nhập mã OTP đã gửi qua email để kích hoạt.");
     }
-    // Block 9 Bài 2: MFA chỉ cài trên bản SSR. Tài khoản đã bật MFA không nhận token từ API,
-    // nếu không thì đăng nhập qua SPA sẽ bỏ qua được bước nhập mã.
+    // Block 10: tài khoản bật MFA chưa nhận token. Password đúng chỉ tạo trạng thái chờ; SPA gửi
+    // challenge + mã tới POST /api/auth/mfa (routes/mfa.js) mới được cấp access + refresh token.
     if (result.user.mfaEnabled) {
-      return fail(res, "MFA_REQUIRED", "Tài khoản đã bật xác thực hai bước. Hãy đăng nhập trên bản SSR.");
+      return ok(res, { next: "mfa", ...(await mfa.startChallenge(result.user.id)) });
     }
 
     ok(res, await issueTokens(res, result.user));
   })
 );
+
+// Bước 2 của đăng nhập (POST /api/auth/mfa) và quản lý MFA (/api/auth/mfa/*)
+router.use("/mfa", mfaRouter);
 
 // ───────────────────────────── Làm mới và đăng xuất ─────────────────────────────
 
@@ -280,8 +262,8 @@ router.post(
 );
 
 router.get("/me", requireAuth, (req, res) => {
-  const { id, email, emailInput, role, status } = req.user;
-  ok(res, { id, email, displayEmail: emailInput, role, status });
+  const { id, email, emailInput, role, status, chefId, mfaEnabled } = req.user;
+  ok(res, { id, email, displayEmail: emailInput, role, status, chefId, mfaEnabled });
 });
 
 // ───────────────────────── Quên / đặt lại mật khẩu ─────────────────────────

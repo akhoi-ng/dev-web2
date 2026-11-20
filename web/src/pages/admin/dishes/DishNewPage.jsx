@@ -1,9 +1,10 @@
 import { useNavigate } from "react-router-dom";
-import { chefsApi, dishesApi, getOptions, ingredientsApi } from "../../../api/index.js";
+import { adminDishesApi, chefsApi, getOptions, ingredientsApi } from "../../../api/index.js";
 import DataStatus from "../../../components/DataStatus.jsx";
 import PageHeading from "../../../components/PageHeading.jsx";
 import { useApiData } from "../../../hooks/useApiData.js";
 import { useDocumentTitle } from "../../../hooks/useDocumentTitle.js";
+import { useAuth } from "../../../auth/AuthContext.jsx";
 import DishForm, { emptyDishValues } from "./DishForm.jsx";
 
 // Danh sách đầu bếp, nguyên liệu, danh mục cho các ô chọn trong form
@@ -25,6 +26,7 @@ export async function loadDishFormOptions(signal) {
 export default function DishNewPage() {
   useDocumentTitle("Thêm món ăn");
   const navigate = useNavigate();
+  const { user } = useAuth();
   const state = useApiData(async (signal) => ({ data: await loadDishFormOptions(signal) }), []);
 
   return (
@@ -35,9 +37,10 @@ export default function DishNewPage() {
           <DishForm
             initialValues={emptyDishValues}
             {...opts}
+            canAssign={user.role === "admin"}
             submitLabel="Thêm món ăn"
             cancelHref="/admin/dishes"
-            onSubmit={(body) => dishesApi.create(body)}
+            onSubmit={(body) => adminDishesApi.create(body)}
             onDone={(dish) => navigate("/admin/dishes/" + dish.id)}
           />
         )}

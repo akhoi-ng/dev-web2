@@ -2,9 +2,9 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const { corsMiddleware } = require("./http/cors");
 const { requireJson, routeNotFound, errorHandler } = require("./http/respond");
-const { requireAuth, protectMethods, requirePermission, requireAdmin } = require("./auth/middleware");
+const { requireAuth, protectMethods, requireAdmin, adminFor } = require("./auth/middleware");
 const authRouter = require("./routes/auth");
-const dishesRouter = require("./routes/dishes");
+const { publicRouter: dishesRouter, adminRouter: adminDishesRouter } = require("./routes/dishes");
 const chefsRouter = require("./routes/chefs");
 const ingredientsRouter = require("./routes/ingredients");
 const statsRouter = require("./routes/stats");
@@ -13,9 +13,7 @@ const teamRouter = require("./routes/team");
 const bookingsRouter = require("./routes/bookings");
 const adminBookingsRouter = require("./routes/admin-bookings");
 
-// Ghi món (POST/PATCH/DELETE) đã qua requireAuth ở protectMethods; thêm điều kiện chỉ admin
-const WRITE_METHODS = new Set(["POST", "PATCH", "DELETE"]);
-const adminWrites = (req, res, next) => (WRITE_METHODS.has(req.method) ? requireAdmin(req, res, next) : next());
+const WRITE_METHODS = ["POST", "PATCH", "DELETE"];
 
 function createApp({ corsOrigin, trustProxy = false }) {
   const app = express();
@@ -34,13 +32,17 @@ function createApp({ corsOrigin, trustProxy = false }) {
   // 3. Routers
   //    Công khai: đăng ký/đăng nhập..., thực đơn (GET dishes), số liệu, đội ngũ, khách đặt bàn
   //    Cần Bearer token của tài khoản active: ghi dishes, mọi endpoint chefs, ingredients, admin/bookings
-  //    Block 9 Bài 2: thêm phân quyền theo role (viewer đọc; editor tạo, sửa; admin thêm xóa).
-  //    Ghi món ăn chỉ admin (ABAC của editor chỉ có ở bản SSR). GET dishes chỉ trả món đã đăng.
+  //    GET /api/dishes chỉ trả món đã đăng (Block 9 Bài 2).
+  //    Block 10: khu vực quản trị của bản SPA chỉ dành cho Admin. Mọi endpoint quản trị (ghi món,
+  //    /api/admin/*, chefs, ingredients) cần Bearer token (401) VÀ role admin (403). Viewer, Editor
+  //    vẫn đăng nhập, bật MFA, xem thực đơn. Bản SSR giữ RBAC + ABAC của Block 9 (viewer đọc, editor
+  //    sửa món nháp của mình); điều kiện ABAC vẫn nằm trong handler ghi món (routes/dishes.js).
   app.use("/api/auth", authRouter);
-  app.use("/api/dishes", protectMethods(["POST", "PATCH", "DELETE"]), adminWrites, dishesRouter);
-  app.use("/api/chefs", requireAuth, requirePermission, chefsRouter);
-  app.use("/api/ingredients", requireAuth, requirePermission, ingredientsRouter);
-  app.use("/api/admin/bookings", requireAuth, requirePermission, adminBookingsRouter);
+  app.use("/api/dishes", protectMethods(WRITE_METHODS), adminFor(WRITE_METHODS), dishesRouter);
+  app.use("/api/admin/dishes", requireAuth, requireAdmin, adminDishesRouter);
+  app.use("/api/chefs", requireAuth, requireAdmin, chefsRouter);
+  app.use("/api/ingredients", requireAuth, requireAdmin, ingredientsRouter);
+  app.use("/api/admin/bookings", requireAuth, requireAdmin, adminBookingsRouter);
   app.use("/api/stats", statsRouter);
   app.use("/api/options", optionsRouter);
   app.use("/api/team", teamRouter);

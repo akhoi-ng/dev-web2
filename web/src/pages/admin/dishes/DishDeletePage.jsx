@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { dishesApi } from "../../../api/index.js";
+import { adminDishesApi } from "../../../api/index.js";
 import DataStatus from "../../../components/DataStatus.jsx";
 import DishImage from "../../../components/DishImage.jsx";
 import PageHeading from "../../../components/PageHeading.jsx";
@@ -13,11 +13,11 @@ export default function DishDeletePage() {
   useDocumentTitle("Xóa món ăn");
   const { id } = useParams();
   const navigate = useNavigate();
-  const state = useApiData((signal) => dishesApi.get(id, signal), [id]);
+  const state = useApiData((signal) => adminDishesApi.get(id, signal), [id]);
   const { pending, formError, submit } = useSubmit();
 
   async function confirmDelete(dishId) {
-    const result = await submit(() => dishesApi.remove(dishId));
+    const result = await submit(() => adminDishesApi.remove(dishId));
     if (result) navigate("/admin/dishes");
   }
 
@@ -43,7 +43,10 @@ export default function DishDeletePage() {
             {formError && <p className="px-6 pt-4 text-sm font-semibold text-red-700" role="alert">{formError}</p>}
 
             <div className="flex flex-wrap gap-3 px-6 py-4">
-              <button type="button" disabled={pending} onClick={() => confirmDelete(dish.id)}
+              {!dish.canDelete && (
+                <p className="w-full text-sm text-stone-500">Chỉ quản trị viên được xóa món. Server vẫn từ chối nếu gửi thẳng DELETE.</p>
+              )}
+              <button type="button" disabled={pending || !dish.canDelete} onClick={() => confirmDelete(dish.id)}
                       className="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700 disabled:opacity-60">
                 {pending ? "Đang xóa…" : "Xác nhận xóa"}
               </button>

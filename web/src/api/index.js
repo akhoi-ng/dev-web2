@@ -23,6 +23,8 @@ function resource(path) {
 }
 
 export const dishesApi = resource("/api/dishes");
+// Block 10: trang quản trị thấy cả món nháp; mỗi món có cờ canEdit / canDelete do API tính theo role
+export const adminDishesApi = resource("/api/admin/dishes");
 export const chefsApi = resource("/api/chefs");
 export const ingredientsApi = resource("/api/ingredients");
 
@@ -54,4 +56,20 @@ export const authApi = {
   reset: (body) => anon("/api/auth/reset", body, { credentials: "include" }),
   me: (signal) => api.request("GET", "/api/auth/me", { signal }),
   logoutAll: () => api.request("POST", "/api/auth/logout-all", { body: {}, credentials: "include" }),
+  // Block 10: bước 2 của đăng nhập khi tài khoản bật MFA -> accessToken + cookie rt
+  mfaLogin: (body) => anon("/api/auth/mfa", body, { credentials: "include" }),
+};
+
+// Block 10: quản lý MFA (cần đăng nhập). confirm và disable trả cặp token mới (các nơi khác bị đăng
+// xuất) nên cần credentials "include" để browser nhận cookie rt mới.
+const authed = (method, path, body, extra = {}) => api.request(method, path, { body, ...extra });
+
+export const mfaApi = {
+  status: (signal) => api.request("GET", "/api/auth/mfa/status", { signal }),
+  pendingSetup: (signal) => api.request("GET", "/api/auth/mfa/setup", { signal }),
+  setup: (body = {}) => authed("POST", "/api/auth/mfa/setup", body),
+  confirm: (body) => authed("POST", "/api/auth/mfa/confirm", body, { credentials: "include" }),
+  cancel: () => authed("POST", "/api/auth/mfa/cancel", {}),
+  recoveryCodes: (body) => authed("POST", "/api/auth/mfa/recovery-codes", body),
+  disable: (body) => authed("POST", "/api/auth/mfa/disable", body, { credentials: "include" }),
 };

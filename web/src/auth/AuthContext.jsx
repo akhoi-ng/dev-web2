@@ -45,15 +45,39 @@ export function AuthProvider({ children }) {
     };
   }, [loadMe]);
 
-  const login = useCallback(
-    async (body) => {
-      const { data } = await authApi.login(body);
+  // Nhận cặp token mới (đăng nhập, qua bước MFA, bật / tắt MFA), tải lại /me, báo các tab khác
+  const applyTokens = useCallback(
+    async (data) => {
       session.set(data);
       const user = await loadMe();
       session.announceLogin();
       return user;
     },
     [loadMe],
+  );
+
+  /*
+   * Bước 1. Tài khoản chưa bật MFA: nhận token ngay -> { user }.
+   * Tài khoản bật MFA (Block 10): API chưa cấp token mà trả challenge -> { mfa: { challenge, expiresIn } }.
+   * Challenge chỉ giữ trong bộ nhớ (state của router), không ghi vào URL hay localStorage.
+   */
+  const login = useCallback(
+    async (body) => {
+      const { data } = await authApi.login(body);
+      if (data && data.next === "mfa") return { mfa: { challenge: data.challenge, expiresIn: data.expiresIn } };
+      return { user: await applyTokens(data) };
+    },
+    [applyTokens],
+  );
+
+  // Bước 2: challenge + mã TOTP hoặc mã khôi phục -> token
+  const verifyMfa = useCallback(
+    async (challenge, code) => {
+      const { data } = await authApi.mfaLogin({ challenge, code });
+      const user = await applyTokens(data);
+      return { user, method: data.method, recoveryRemaining: data.recoveryRemaining };
+    },
+    [applyTokens],
   );
 
   const logout = useCallback(() => session.logout(), []);
@@ -65,7 +89,10 @@ export function AuthProvider({ children }) {
     await session.logout();
   }, []);
 
-  const value = useMemo(() => ({ ...state, login, logout, logoutAll }), [state, login, logout, logoutAll]);
+  const value = useMemo(
+    () => ({ ...state, login, verifyMfa, applyTokens, logout, logoutAll }),
+    [state, login, verifyMfa, applyTokens, logout, logoutAll],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -75,8 +102,5 @@ export function useAuth() {
   return ctx;
 }
 
-// Chỉ nhận đường dẫn nội bộ cho ?next= (chặn "//evil.com", "/\evil", "https://...")
-export function safeNext(raw) {
-  if (typeof raw !== "string" || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return null;
-  return raw;
-}
+// safeNext, isAdminUser, landingFor nằm ở landing.js (chạy được dưới Node thuần để test)
+export { safeNext, isAdminUser, landingFor } from "./landing.js";

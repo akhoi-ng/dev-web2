@@ -1,5 +1,8 @@
 // Nghiệm thu Block 9 – Bài 1 bằng request trực tiếp tới API (không qua giao diện), theo các bảng
 // "Nghiệm thu Bài 1" của deck, cộng phần refresh token (xoay vòng, phát hiện dùng lại, đăng xuất).
+// Block 10: thêm MFA cho SPA (bật bằng QR / secret key, đăng nhập hai bước, giới hạn thử, chống dùng
+// lại mã, mã khôi phục, reset password không tắt MFA) và khu vực quản trị của API chỉ cho Admin. Mã TOTP
+// được sinh từ secret đọc ở response setup, như một ứng dụng Authenticator.
 // Script tự chạy API (cổng ACCEPT_PORT, mặc định 3998), đọc DB để đối chiếu (hash, usedAt, attempts,
 // tokenVersion, refresh_tokens) và đọc thư trong api/mail-outbox/.
 //
@@ -17,8 +20,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import prismaPkg from "@prisma/client";
 import jwt from "jsonwebtoken";
+import otplib from "otplib";
 
 const { PrismaClient } = prismaPkg;
+const { authenticator } = otplib;
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUTBOX = path.join(ROOT, "mail-outbox");
 const PORT = Number(process.env.ACCEPT_PORT) || 3998;
@@ -157,6 +162,11 @@ async function startServer() {
 }
 async function stopServer() {
   if (!server) return;
+  // Server đã thoát (ví dụ thiếu cấu hình lúc khởi động): không chờ sự kiện exit sẽ không bao giờ tới
+  if (server.exitCode !== null || server.signalCode !== null) {
+    server = null;
+    return;
+  }
   const done = new Promise((r) => server.once("exit", r));
   server.kill();
   await done;
@@ -299,9 +309,10 @@ async function jwtAndCrud(account) {
     check(`chưa đăng nhập ${m} ${p} -> 401 UNAUTHENTICATED`, x.status === 401 && code(x) === "UNAUTHENTICATED", `${x.status} ${code(x)}`);
   }
 
-  // Block 9 Bài 2: tài khoản mới đăng ký là viewer -> đọc được, ghi bị 403 (token vẫn giữ)
+  // Tài khoản mới đăng ký là viewer. Block 10: khu vực quản trị của bản SPA chỉ dành cho Admin,
+  // nên viewer bị 403 cả khi đọc (token vẫn giữ, /api/auth/me vẫn dùng được)
   let x = await call("GET", "/api/chefs", { token });
-  check("viewer: GET /api/chefs -> 200 ok", x.status === 200 && x.json?.ok === true, `${x.status}`);
+  check("viewer: GET /api/chefs -> 403 FORBIDDEN (quản trị chỉ Admin)", x.status === 403 && code(x) === "FORBIDDEN", `${x.status}`);
   x = await call("POST", "/api/chefs", { token, body: { name: `Viewer tạo ${RUN}`, specialty: "x" } });
   check("viewer: POST /api/chefs -> 403 FORBIDDEN", x.status === 403 && code(x) === "FORBIDDEN", `${x.status} ${code(x)}`);
   x = await call("POST", "/api/dishes", { token, body: { name: `Viewer tạo ${RUN}`, price: 1000 } });
@@ -472,6 +483,246 @@ async function forgotAndReset(account) {
   return { ...account, password: newPassword };
 }
 
+// ───────────────────────────── Block 10: MFA cho SPA ─────────────────────────────
+
+// Sinh mã như ứng dụng Authenticator; offsetSteps = 1 là mã của bước 30 giây kế tiếp (server nhận
+// lệch một bước), dùng khi mã của bước hiện tại đã bị đánh dấu là đã dùng.
+const totpAt = (secret, offsetSteps = 0) => authenticator.clone({ epoch: Date.now() + offsetSteps * 30000 }).generate(secret);
+const otherCode = (c) => String((Number(c) + 500000) % 1000000).padStart(6, "0");
+
+// Các phần trước đã gửi nhiều request từ cùng IP (đăng ký, đăng nhập...): xóa bộ đếm theo IP để
+// phần Block 10 không chạm giới hạn chung (các giới hạn đó đã được nghiệm thu ở trên).
+const resetIpLimits = () => prisma.authThrottle.deleteMany({ where: { key: { contains: ":ip:" } } });
+
+async function mfaForSpa() {
+  section("Block 10 · MFA cho SPA: bật bằng QR / secret key");
+  await resetIpLimits();
+  const account = await createActiveAccount("mfa");
+  const user0 = await prisma.user.findUnique({ where: { email: account.email } });
+  const first = await login(account);
+  const other = await login(account); // "thiết bị khác" đăng nhập trước khi bật MFA
+
+  let r = await call("GET", "/api/auth/mfa/status", { token: first.token });
+  check("status: tài khoản mới chưa bật MFA", r.json?.ok === true && r.json.data.mfaEnabled === false, r.text);
+  r = await call("GET", "/api/auth/mfa/status");
+  check("quản lý MFA cần Bearer: không token -> 401", r.status === 401);
+
+  r = await call("POST", "/api/auth/mfa/setup", { token: first.token, body: {} });
+  const setup = r.json?.data || {};
+  const secret = String(setup.secret || "").replace(/ /g, "");
+  check("setup -> QR data URL vẽ ở server + secret key nhập tay + otpauth://", String(setup.qr).startsWith("data:image/png;base64,") && /^[A-Z2-7]{32}$/.test(secret) && String(setup.otpauthUri).startsWith("otpauth://totp/"), r.text.slice(0, 200));
+  check("setup: Cache-Control no-store", r.headers.get("cache-control") === "no-store", r.headers.get("cache-control"));
+  let row = await prisma.user.findUnique({ where: { id: user0.id } });
+  check("setup: secret chờ xác nhận lưu đã mã hóa, MFA vẫn tắt", row.mfaPendingSecret?.startsWith("v1.") && !row.mfaPendingSecret.includes(secret) && row.mfaEnabled === false);
+
+  r = await call("POST", "/api/auth/mfa/confirm", { token: first.token, body: { code: otherCode(totpAt(secret)) } });
+  check("confirm mã sai -> INVALID_MFA_CODE, MFA vẫn tắt", code(r) === "INVALID_MFA_CODE" && !(await prisma.user.findUnique({ where: { id: user0.id } })).mfaEnabled, code(r));
+
+  const jar = new Map(first.jar);
+  const confirmCode = totpAt(secret);
+  r = await call("POST", "/api/auth/mfa/confirm", { token: first.token, jar, body: { code: confirmCode } });
+  const recovery = r.json?.data?.recoveryCodes || [];
+  const tokenAfter = r.json?.data?.accessToken;
+  check("confirm mã đúng -> bật MFA, 10 mã khôi phục hiện một lần + token mới cho thiết bị này", r.json?.ok === true && recovery.length === 10 && Boolean(tokenAfter) && jar.get("rt") !== first.jar.get("rt"), r.text.slice(0, 200));
+  row = await prisma.user.findUnique({ where: { id: user0.id } });
+  const codeRows = await prisma.recoveryCode.findMany({ where: { userId: user0.id } });
+  check("DB: mfaEnabled, secret mã hóa, tokenVersion + 1, mfaLastStep ghi bước đã dùng", row.mfaEnabled && row.mfaSecret?.startsWith("v1.") && !row.mfaPendingSecret && row.tokenVersion === user0.tokenVersion + 1 && Number.isInteger(row.mfaLastStep));
+  check("DB: mã khôi phục lưu HMAC, không lưu mã gốc", codeRows.length === 10 && codeRows.every((c) => c.usedAt === null && !recovery.includes(c.codeHash) && /^[0-9a-f]{64}$/.test(c.codeHash)));
+  r = await call("GET", "/api/auth/me", { token: first.token });
+  check("bật MFA: access token cũ của chính thiết bị -> 401 (tokenVersion)", r.status === 401);
+  r = await call("GET", "/api/auth/me", { token: tokenAfter });
+  check("token mới cấp kèm confirm dùng được, /me báo mfaEnabled", r.json?.data?.mfaEnabled === true, r.text);
+  r = await call("POST", "/api/auth/refresh", { jar: other.jar, body: {} });
+  check("bật MFA: refresh token của thiết bị khác -> 401 (phải đăng nhập lại qua MFA)", r.status === 401);
+
+  section("Block 10 · MFA cho SPA: đăng nhập hai bước");
+  const step1Jar = new Map();
+  r = await call("POST", "/api/auth/login", { body: account, jar: step1Jar });
+  const challenge = r.json?.data?.challenge;
+  check("password đúng -> { next: \"mfa\", challenge }, KHÔNG có accessToken", r.json?.ok === true && r.json.data.next === "mfa" && /^[A-Za-z0-9_-]{43}$/.test(challenge || "") && !hasAccessToken(r), r.text);
+  check("password đúng nhưng chưa nhập mã: không có cookie rt", !step1Jar.has("rt") && !r.setCookies.some((c) => c.startsWith("rt=")));
+  const ch = await prisma.mfaChallenge.findUnique({ where: { tokenHash: sha256(challenge) } });
+  check("DB lưu SHA-256 của challenge, có hạn 5 phút", Boolean(ch) && (await prisma.mfaChallenge.count({ where: { tokenHash: challenge } })) === 0 && ch.expiresAt - Date.now() <= 5 * 60 * 1000);
+  r = await call("GET", "/api/chefs", { token: challenge });
+  check("dùng challenge làm Bearer gọi API -> 401", r.status === 401);
+  r = await call("GET", "/api/admin/dishes", { headers: { Authorization: `Bearer ${challenge}` } });
+  check("challenge không mở được /api/admin/dishes -> 401", r.status === 401);
+
+  r = await call("POST", "/api/auth/mfa", { body: { challenge, code: otherCode(totpAt(secret)) } });
+  check("mã sai -> INVALID_MFA_CODE, còn 4 lượt", code(r) === "INVALID_MFA_CODE" && r.json.error.attemptsLeft === 4 && !hasAccessToken(r), r.text);
+  check("DB: attempts của lần chờ = 1", (await prisma.mfaChallenge.findUnique({ where: { tokenHash: sha256(challenge) } })).attempts === 1);
+  r = await call("POST", "/api/auth/mfa", { body: { challenge, code: confirmCode } });
+  check("mã vừa dùng để bật MFA -> bị từ chối (chống dùng lại)", code(r) === "INVALID_MFA_CODE", code(r));
+  const loginJar = new Map();
+  const goodCode = totpAt(secret, 1);
+  r = await call("POST", "/api/auth/mfa", { body: { challenge, code: goodCode }, jar: loginJar });
+  const mfaToken = r.json?.data?.accessToken;
+  check("mã đúng -> accessToken + cookie rt", r.json?.ok === true && Boolean(mfaToken) && loginJar.has("rt") && r.json.data.method === "totp", r.text.slice(0, 200));
+  check("qua MFA: challenge bị xóa", (await prisma.mfaChallenge.count({ where: { tokenHash: sha256(challenge) } })) === 0);
+  r = await call("GET", "/api/auth/me", { token: mfaToken });
+  check("token sau MFA gọi được API", r.status === 200 && r.json?.data?.email === account.email);
+  r = await call("POST", "/api/auth/mfa", { body: { challenge, code: goodCode } });
+  check("gửi lại challenge đã dùng -> 401 MFA_CHALLENGE_EXPIRED", r.status === 401 && code(r) === "MFA_CHALLENGE_EXPIRED", `${r.status} ${code(r)}`);
+  let again = await call("POST", "/api/auth/login", { body: account });
+  r = await call("POST", "/api/auth/mfa", { body: { challenge: again.json?.data?.challenge, code: goodCode } });
+  check("cùng mã đúng dùng lần hai (challenge mới) -> INVALID_MFA_CODE", code(r) === "INVALID_MFA_CODE", code(r));
+  r = await call("POST", "/api/auth/mfa/disable", { token: challenge, body: { password: account.password, code: goodCode } });
+  check("challenge không dùng được cho route quản lý MFA -> 401", r.status === 401);
+  await prisma.authThrottle.deleteMany({ where: { key: `mfa:user:${user0.id}` } });
+
+  section("Block 10 · MFA cho SPA: giới hạn thử, hết hạn, mã khôi phục");
+  again = await call("POST", "/api/auth/login", { body: account });
+  const c2 = again.json?.data?.challenge;
+  const wrong = otherCode(totpAt(secret));
+  const results = [];
+  for (let i = 0; i < 5; i++) results.push(await call("POST", "/api/auth/mfa", { body: { challenge: c2, code: wrong } }));
+  check("4 lần sai đầu -> INVALID_MFA_CODE (còn 4, 3, 2, 1 lượt)", results.slice(0, 4).map((x) => x.json?.error?.attemptsLeft).join(",") === "4,3,2,1");
+  check("lần sai thứ 5 -> 401 MFA_TOO_MANY_ATTEMPTS, lần chờ bị hủy", results[4].status === 401 && code(results[4]) === "MFA_TOO_MANY_ATTEMPTS" && (await prisma.mfaChallenge.count({ where: { tokenHash: sha256(c2) } })) === 0, `${results[4].status} ${code(results[4])}`);
+  r = await call("POST", "/api/auth/mfa", { body: { challenge: c2, code: totpAt(secret, 1) } });
+  check("hết lượt rồi nhập mã đúng vẫn -> 401 (phải đăng nhập lại)", r.status === 401 && !hasAccessToken(r));
+  await prisma.authThrottle.deleteMany({ where: { key: `mfa:user:${user0.id}` } });
+
+  again = await call("POST", "/api/auth/login", { body: account });
+  const c3 = again.json?.data?.challenge;
+  await prisma.mfaChallenge.update({ where: { tokenHash: sha256(c3) }, data: { expiresAt: new Date(Date.now() - 1000) } });
+  r = await call("POST", "/api/auth/mfa", { body: { challenge: c3, code: totpAt(secret, 1) } });
+  check("challenge quá 5 phút -> 401 MFA_CHALLENGE_EXPIRED", r.status === 401 && code(r) === "MFA_CHALLENGE_EXPIRED");
+
+  again = await call("POST", "/api/auth/login", { body: account });
+  r = await call("POST", "/api/auth/mfa", { body: { challenge: again.json?.data?.challenge, code: recovery[0].toLowerCase() } });
+  check("mã khôi phục (chữ thường vẫn nhận) -> token, method recovery, còn 9 mã", r.json?.ok === true && r.json.data.method === "recovery" && r.json.data.recoveryRemaining === 9, r.text.slice(0, 200));
+  let recToken = r.json?.data?.accessToken;
+  const used = await prisma.recoveryCode.count({ where: { userId: user0.id, usedAt: { not: null } } });
+  check("DB: mã khôi phục vừa dùng có usedAt", used === 1);
+  again = await call("POST", "/api/auth/login", { body: account });
+  r = await call("POST", "/api/auth/mfa", { body: { challenge: again.json?.data?.challenge, code: recovery[0] } });
+  check("mã khôi phục dùng lần hai -> INVALID_MFA_CODE", code(r) === "INVALID_MFA_CODE", code(r));
+  await prisma.authThrottle.deleteMany({ where: { key: `mfa:user:${user0.id}` } });
+
+  section("Block 10 · MFA cho SPA: xác thực lại, tạo lại mã, reset password, tắt MFA");
+  r = await call("POST", "/api/auth/mfa/recovery-codes", { token: recToken, body: { password: "sai-mat-khau", code: recovery[1] } });
+  check("tạo lại mã khôi phục: sai password -> REAUTH_FAILED, mã khôi phục không bị tiêu thụ", code(r) === "REAUTH_FAILED" && (await prisma.recoveryCode.count({ where: { userId: user0.id, usedAt: { not: null } } })) === 1, code(r));
+  r = await call("POST", "/api/auth/mfa/disable", { token: recToken, body: { password: account.password, code: wrong } });
+  check("tắt MFA: đúng password nhưng sai mã -> REAUTH_FAILED, MFA vẫn bật", code(r) === "REAUTH_FAILED" && (await prisma.user.findUnique({ where: { id: user0.id } })).mfaEnabled, code(r));
+  r = await call("POST", "/api/auth/mfa/setup", { token: recToken, body: {} });
+  check("thay thiết bị khi MFA đang bật mà không xác thực lại -> REAUTH_FAILED", code(r) === "REAUTH_FAILED", code(r));
+  r = await call("POST", "/api/auth/mfa/recovery-codes", { token: recToken, body: { password: account.password, code: recovery[1] } });
+  const recovery2 = r.json?.data?.recoveryCodes || [];
+  check("tạo lại mã khôi phục (password + mã khôi phục) -> 10 mã mới", r.json?.ok === true && recovery2.length === 10 && !recovery2.includes(recovery[2]), r.text.slice(0, 120));
+  again = await call("POST", "/api/auth/login", { body: account });
+  r = await call("POST", "/api/auth/mfa", { body: { challenge: again.json?.data?.challenge, code: recovery[2] } });
+  check("mã khôi phục của nhóm cũ (chưa dùng) -> bị từ chối", code(r) === "INVALID_MFA_CODE", code(r));
+  await prisma.authThrottle.deleteMany({ where: { key: `mfa:user:${user0.id}` } });
+
+  // Reset password chỉ chứng minh đọc được hộp thư: không tắt MFA, không tạo phiên
+  await call("POST", "/api/auth/forgot", { body: { email: account.email } });
+  const mail = await latestMail(account.email, "reset");
+  const resetToken = decodeURIComponent(new URL(resetLinkOf(mail.html)).searchParams.get("token") || "");
+  const newPassword = `mat-khau-mfa-${RUN}`;
+  r = await call("POST", "/api/auth/reset", { body: { token: resetToken, password: newPassword } });
+  check("reset password -> ok, không có token", r.json?.ok === true && !hasAccessToken(r), r.text);
+  check("reset password: MFA vẫn bật, secret giữ nguyên", (await prisma.user.findUnique({ where: { id: user0.id } })).mfaEnabled === true);
+  r = await call("GET", "/api/auth/me", { token: recToken });
+  check("reset password: token trước đó -> 401", r.status === 401);
+  again = await call("POST", "/api/auth/login", { body: { email: account.email, password: newPassword } });
+  check("reset xong đăng nhập -> vẫn phải qua bước MFA", again.json?.data?.next === "mfa" && !hasAccessToken(again), again.text);
+
+  r = await call("POST", "/api/auth/mfa", { body: { challenge: again.json?.data?.challenge, code: recovery2[0] } });
+  recToken = r.json?.data?.accessToken;
+  const disableJar = new Map();
+  r = await call("POST", "/api/auth/mfa/disable", { token: recToken, jar: disableJar, body: { password: newPassword, code: recovery2[1] } });
+  row = await prisma.user.findUnique({ where: { id: user0.id } });
+  check("tắt MFA (password + mã) -> ok, token mới; DB xóa secret và mã khôi phục", r.json?.ok === true && Boolean(r.json.data.accessToken) && disableJar.has("rt") && !row.mfaEnabled && !row.mfaSecret && (await prisma.recoveryCode.count({ where: { userId: user0.id } })) === 0, r.text.slice(0, 160));
+  r = await call("GET", "/api/auth/me", { token: recToken });
+  check("tắt MFA: token cũ -> 401 (đăng xuất mọi nơi)", r.status === 401);
+  const plain = await login({ email: account.email, password: newPassword });
+  check("tắt MFA xong: đăng nhập chỉ cần password", Boolean(plain.token));
+
+  check("log của API không chứa TOTP secret hay mã khôi phục", !serverLog.includes(secret) && ![...recovery, ...recovery2].some((c) => serverLog.includes(c)));
+}
+
+// ───────────────────────── Block 10: khu vực quản trị chỉ Admin ─────────────────────────
+
+const ADMIN_TAG = `[nghiệm thu Block 10 ${RUN}]`;
+
+async function adminOnlyOnApi() {
+  section("Block 10 · Khu vực quản trị của API chỉ dành cho Admin");
+  await resetIpLimits();
+  const chef = await prisma.chef.create({ data: { name: `Bếp A ${ADMIN_TAG}`, specialty: "x" } });
+  const acc = {};
+  for (const [tag, data] of [
+    ["viewer", { role: "viewer" }],
+    ["editor", { role: "editor", chefId: chef.id }],
+    ["admin", { role: "admin" }],
+  ]) {
+    const a = await createActiveAccount(`quantri-${tag}`);
+    await prisma.user.update({ where: { email: a.email }, data });
+    acc[tag] = { ...a, token: (await login(a)).token };
+  }
+  const [viewer, editor, admin] = [acc.viewer.token, acc.editor.token, acc.admin.token];
+  const mk = (name, status) => prisma.dish.create({ data: { name: `${name} ${ADMIN_TAG}`, price: 10000, chefId: chef.id, status } });
+  const draft = await mk("Nháp", "draft");
+  const published = await mk("Đã đăng", "published");
+  const dish = (id) => prisma.dish.findUnique({ where: { id } });
+
+  // Đọc khu vực quản trị: chỉ Admin
+  const reads = ["/api/admin/dishes", `/api/admin/dishes/${draft.id}`, "/api/chefs", "/api/ingredients", "/api/admin/bookings"];
+  for (const [role, token] of [["viewer", viewer], ["editor", editor]]) {
+    const results = await Promise.all(reads.map((p) => call("GET", p, { token })));
+    check(`${role}: GET ${reads.length} endpoint quản trị -> 403 FORBIDDEN`, results.every((x) => x.status === 403 && code(x) === "FORBIDDEN"), results.map((x) => x.status).join(","));
+  }
+  let r = await call("GET", "/api/admin/dishes");
+  check("không token: GET /api/admin/dishes -> 401 (xác thực trước phân quyền)", r.status === 401);
+  r = await call("GET", "/api/auth/me", { token: editor });
+  check("editor vẫn đăng nhập được: /api/auth/me -> role editor", r.json?.data?.role === "editor");
+  r = await call("GET", "/api/auth/mfa/status", { token: viewer });
+  check("viewer vẫn quản lý MFA của mình: /api/auth/mfa/status -> 200", r.json?.ok === true);
+
+  // Ghi: chỉ Admin, dữ liệu không đổi khi bị chặn
+  r = await call("POST", "/api/dishes", { token: editor, body: { name: `Editor tạo ${ADMIN_TAG}`, price: 5000 } });
+  check("editor: POST /api/dishes -> 403, không tạo món", r.status === 403 && (await prisma.dish.count({ where: { name: `Editor tạo ${ADMIN_TAG}` } })) === 0, `${r.status}`);
+  r = await call("PATCH", `/api/admin/dishes/${draft.id}`, { token: editor, body: { price: 1 } });
+  check("editor: PATCH món nháp của đầu bếp mình -> 403, giá không đổi", r.status === 403 && (await dish(draft.id)).price === 10000, `${r.status}`);
+  r = await call("PATCH", `/api/dishes/${draft.id}`, { token: viewer, body: { price: 1 } });
+  check("viewer: PATCH /api/dishes/:id -> 403, giá không đổi", r.status === 403 && (await dish(draft.id)).price === 10000, `${r.status}`);
+  r = await call("DELETE", `/api/dishes/${published.id}`, { token: editor });
+  check("editor: DELETE món -> 403, món còn", r.status === 403 && Boolean(await dish(published.id)), `${r.status}`);
+  r = await call("POST", "/api/chefs", { token: editor, body: { name: `x ${ADMIN_TAG}`, specialty: "x" } });
+  check("editor: POST /api/chefs -> 403", r.status === 403, `${r.status}`);
+
+  // Trang khách không bị ảnh hưởng
+  r = await call("GET", `/api/dishes/${published.id}`);
+  check("khách: GET món đã đăng -> 200, không cần token", r.json?.ok === true);
+  r = await call("GET", `/api/dishes/${draft.id}`);
+  check("khách: GET món nháp -> NOT_FOUND", code(r) === "NOT_FOUND");
+
+  // Admin dùng đủ chức năng
+  r = await call("GET", `/api/admin/dishes/${draft.id}`, { token: admin });
+  check("admin: xem món nháp, cờ canEdit / canDelete true", r.json?.data?.status === "draft" && r.json.data.canEdit === true && r.json.data.canDelete === true, r.text.slice(0, 160));
+  r = await call("GET", `/api/admin/dishes?status=draft&mode=basic&q=${encodeURIComponent(RUN)}`, { token: admin });
+  check("admin: danh sách lọc nháp chỉ có món nháp", (r.json?.data || []).some((x) => x.id === draft.id) && r.json.data.every((x) => x.status === "draft"), r.text.slice(0, 160));
+  r = await call("POST", "/api/admin/dishes", { token: admin, body: { name: `Admin tạo nháp ${ADMIN_TAG}`, price: 1000, chefId: chef.id, status: "draft" } });
+  check("admin: tạo món chọn đầu bếp + trạng thái nháp", r.json?.data?.status === "draft" && r.json.data.chefId === chef.id, r.text.slice(0, 160));
+  r = await call("POST", "/api/dishes", { token: admin, body: { name: `Admin tạo ${ADMIN_TAG}`, price: 1000 } });
+  check("admin: tạo món không chọn trạng thái -> published", r.json?.data?.status === "published", r.text.slice(0, 160));
+  r = await call("PATCH", `/api/admin/dishes/${draft.id}`, { token: admin, body: { status: "published" } });
+  check("admin: đăng món nháp -> khách thấy", r.json?.data?.status === "published" && (await call("GET", `/api/dishes/${draft.id}`)).json?.ok === true, r.text.slice(0, 160));
+  r = await call("PATCH", `/api/admin/dishes/${draft.id}`, { token: admin, body: { ingredients: [] } });
+  check("admin: PATCH chỉ đổi công thức -> 200", r.json?.ok === true, r.text.slice(0, 160));
+  r = await call("DELETE", `/api/admin/dishes/${published.id}`, { token: admin });
+  check("admin: xóa món -> 200", r.json?.ok === true && !(await dish(published.id)));
+
+  // Role đọc từ DB ở mỗi request: hạ admin xuống editor thì token đang có bị chặn ngay
+  await prisma.user.update({ where: { email: acc.admin.email }, data: { role: "editor" } });
+  r = await call("GET", "/api/admin/dishes", { token: admin });
+  check("hạ admin xuống editor trong DB -> token đang dùng bị 403 ngay", r.status === 403, `${r.status}`);
+}
+
+async function cleanupBlock10() {
+  await prisma.dish.deleteMany({ where: { name: { contains: "[nghiệm thu Block 10" } } });
+  await prisma.chef.deleteMany({ where: { name: { contains: "[nghiệm thu Block 10" } } });
+}
+
 async function codeReview() {
   section("Đọc mã: các điểm agent hay làm sai");
   const tokens = await fs.readFile(path.join(ROOT, "src/auth/tokens.js"), "utf8");
@@ -494,8 +745,11 @@ async function main() {
     await jwtAndCrud(account);
     await refreshTokens(account);
     await forgotAndReset(account);
+    await mfaForSpa();
+    await adminOnlyOnApi();
     await codeReview();
   } finally {
+    await cleanupBlock10().catch((e) => console.error("dọn dữ liệu Block 10:", e.message));
     await stopServer();
     fakeGoogle.server.close();
     await prisma.authThrottle.deleteMany({});

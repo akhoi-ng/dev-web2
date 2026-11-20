@@ -1,0 +1,1432 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phân quyền và MFA: deck tương tác</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lora:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #3a2c23;
+  --paper: #f7f1e6;
+  --card: #fffcf6;
+  --line: #e2d6c3;
+  --ink: #2b231d;
+  --muted: #76685c;
+  --coffee: #6b4a33;
+  --coffee-d: #4a3223;
+  --latte: #ecdcc2;
+  --cream: #f4e9d6;
+  --ok: #3d7a4c; --ok-bg: #e2efe2;
+  --bad: #b2452f; --bad-bg: #f6e0d8;
+  --warn: #9a6a14; --warn-bg: #f5e8cc;
+  --info: #3f6178; --info-bg: #e2ebf1;
+  --sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --serif: "Lora", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 18px; line-height: 1.5; }
+.ic { width: 1.1em; height: 1.1em; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.18em; flex-shrink: 0; }
+code, .mono { font-family: var(--mono); font-variant-ligatures: none; }
+:not(pre) > code { background: var(--cream); border: 1px solid var(--line); border-radius: 5px; padding: 0 .3em; font-size: .86em; }
+pre.code { margin: 0; background: #2f2620; color: #f3e9da; border-radius: 10px; padding: 12px 16px; font-size: 15px; line-height: 1.55; white-space: pre-wrap; }
+pre.code .k { color: #f0b46c; } pre.code .s { color: #a9d39a; } pre.code .c { color: #a8988a; }
+pre.code .hl { background: #6b4a33; border-radius: 4px; outline: 2px solid #f0b46c; }
+
+/* ---------- Khung deck ---------- */
+.viewport { position: fixed; inset: 0 0 56px 0; display: grid; place-items: center; overflow: hidden; }
+.stage { width: 1160px; height: 652px; position: relative; transform-origin: center center; flex-shrink: 0; }
+.slide {
+  position: absolute; inset: 0; display: none; flex-direction: column;
+  background: var(--paper); border-radius: 16px; padding: 30px 46px 26px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.35); overflow: hidden;
+}
+.slide.active { display: flex; animation: enter .35s ease; }
+@keyframes enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.slide .notes { display: none; }
+.kicker { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--coffee); margin-bottom: 4px; }
+h2.title { font-family: var(--serif); font-weight: 600; font-size: 36px; line-height: 1.2; margin: 0 0 6px; color: var(--coffee-d); }
+.lede { margin: 0 0 18px; color: var(--muted); font-size: 18px; max-width: 1080px; }
+.body { flex: 1; min-height: 0; display: grid; gap: 18px; align-content: start; }
+.g2 { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+.g-5-7 { grid-template-columns: minmax(0,5fr) minmax(0,7fr); }
+.g-7-5 { grid-template-columns: minmax(0,7fr) minmax(0,5fr); }
+.g3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; min-width: 0; }
+.card h3 { margin: 0 0 6px; font-family: var(--serif); font-size: 21px; font-weight: 600; color: var(--coffee-d); display: flex; gap: 8px; align-items: center; }
+.card p { margin: 0 0 6px; }
+.card p:last-child { margin-bottom: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 15px; }
+.tiny { font-size: 13px; }
+ul.clean { margin: 0; padding-left: 20px; }
+ul.clean li { margin: 3px 0; }
+.label { font-size: 13px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; display: flex; gap: 6px; align-items: center; }
+.tag-mh { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .07em; color: var(--warn); background: var(--warn-bg); border: 1px solid #e6cf9c; border-radius: 6px; padding: 1px 8px; text-transform: uppercase; }
+
+.btn { font: inherit; font-size: 15px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 7px 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: background .15s, border-color .15s, transform .1s; }
+.btn:hover { border-color: var(--coffee); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--coffee); border-color: var(--coffee); color: #fff; }
+.btn.primary:hover { background: var(--coffee-d); }
+.btn.on { background: var(--coffee); border-color: var(--coffee); color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.good { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.btn.wrong { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 15px; border: 0; background: transparent; padding: 7px 13px; cursor: pointer; color: var(--ink); border-right: 1px solid var(--line); display: inline-flex; gap: 6px; align-items: center; }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--coffee); color: #fff; }
+
+.result { border-radius: 10px; padding: 11px 14px; display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); background: var(--card); font-size: 16px; min-height: 48px; }
+.result .ic { width: 22px; height: 22px; margin-top: 1px; }
+.result.ok { background: var(--ok-bg); border-color: #b9d6bb; color: #24502f; }
+.result.bad { background: var(--bad-bg); border-color: #e8bcad; color: #7d2b1b; }
+.result.warn { background: var(--warn-bg); border-color: #e6cf9c; color: #6b4a0c; }
+.result.info { background: var(--info-bg); border-color: #bccfdc; color: #2b4557; }
+
+table.t { border-collapse: collapse; width: 100%; font-size: 15.5px; background: var(--card); border-radius: 10px; overflow: hidden; }
+table.t th, table.t td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+table.t th { background: var(--cream); font-weight: 600; font-size: 14px; color: var(--coffee-d); }
+table.t tr.sel td { background: #f6ead6; }
+table.t td.c, table.t th.c { text-align: center; }
+.yes { color: var(--ok); } .no { color: var(--bad); }
+
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; font-size: 15.5px; }
+.switch input { display: none; }
+.switch .track { width: 44px; height: 24px; background: #cdbfaa; border-radius: 99px; position: relative; transition: background .2s; flex-shrink: 0; }
+.switch .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .2s; }
+.switch input:checked + .track { background: var(--ok); }
+.switch input:checked + .track::after { left: 23px; }
+
+/* ---------- Lead và chương ---------- */
+.slide.lead { background: radial-gradient(1200px 600px at 85% 15%, #f2e2c8 0%, var(--paper) 60%); justify-content: center; padding-left: 90px; }
+.slide.lead h1 { font-family: var(--serif); font-size: 64px; line-height: 1.1; margin: 10px 0 14px; color: var(--coffee-d); }
+.slide.lead .sub { font-size: 22px; color: var(--muted); max-width: 600px; margin: 0 0 34px; }
+.slide.lead .author { font-size: 22px; font-weight: 600; color: var(--coffee); }
+.slide.lead .hint { position: absolute; left: 90px; bottom: 34px; font-size: 15px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.lead-art { position: absolute; right: 56px; top: 50%; transform: translateY(-50%); display: grid; gap: 16px; }
+.lead-art .pill { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 20px; font-weight: 600; color: var(--coffee-d); box-shadow: 0 6px 18px rgba(74,50,35,.08); }
+.lead-art .pill .ic { width: 28px; height: 28px; color: var(--coffee); }
+.slide.chapter { background: var(--coffee-d); color: #f7efe2; justify-content: center; padding-left: 90px; }
+.slide.chapter .num { font-family: var(--serif); font-size: 26px; color: #e5c9a0; }
+.slide.chapter h1 { font-family: var(--serif); font-size: 72px; margin: 6px 0 12px; }
+.slide.chapter p { font-size: 22px; color: #dccbb4; max-width: 620px; margin: 0; }
+.slide.chapter .big-ic { position: absolute; right: 90px; top: 50%; transform: translateY(-50%); color: #8a6a4f; }
+.slide.chapter .big-ic .ic { width: 220px; height: 220px; stroke-width: 1.2; }
+
+/* ---------- Thanh điều hướng ---------- */
+.nav { position: fixed; left: 0; right: 0; bottom: 0; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px; background: #2b2019; color: #e9dcc8; z-index: 20; }
+.nav button { font: inherit; font-size: 14px; background: transparent; color: inherit; border: 1px solid #5a4636; border-radius: 8px; padding: 6px 11px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.nav button:hover { border-color: #c9a77f; }
+.nav button.on { background: #6b4a33; border-color: #6b4a33; }
+.nav .count { font-family: var(--mono); font-size: 14px; min-width: 64px; text-align: center; }
+.nav .progress { flex: 1; height: 4px; background: #4a3a2e; border-radius: 99px; overflow: hidden; }
+.nav .progress i { display: block; height: 100%; width: 0; background: #d9b07c; transition: width .3s; }
+.nav .ttl { font-size: 14px; color: #bfae98; max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notes-panel { position: fixed; right: 0; top: 0; bottom: 56px; width: 400px; background: #fffaf1; border-left: 1px solid var(--line); box-shadow: -10px 0 30px rgba(0,0,0,.25); padding: 20px 22px; overflow: auto; z-index: 15; transform: translateX(100%); transition: transform .25s; font-size: 15.5px; }
+.notes-panel.open { transform: none; }
+.notes-panel h4 { margin: 0 0 10px; font-family: var(--serif); font-size: 19px; color: var(--coffee-d); display: flex; gap: 8px; align-items: center; }
+.notes-panel p { margin: 0 0 10px; }
+
+/* ---------- Slide 2: phân loại request ---------- */
+.qrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 14px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.qrow .req { font-size: 15.5px; }
+.qrow .fb { grid-column: 1 / -1; font-size: 15px; display: none; padding: 7px 12px; min-height: 0; }
+.qrow.done .fb { display: flex; }
+.qrow .choices { display: flex; gap: 6px; }
+.qrow .choices .btn { font-size: 14px; padding: 5px 10px; }
+
+/* ---------- Slide 4: thẻ sách ---------- */
+.books { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+.book { border: 2px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--card); transition: border-color .25s, background .25s; }
+.book .bt { font-family: var(--serif); font-size: 22px; font-weight: 600; color: var(--coffee-d); display: flex; gap: 8px; align-items: center; }
+.book .meta { font-size: 14.5px; color: var(--muted); margin: 4px 0 10px; }
+.book .verdict { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; font-weight: 600; }
+.book .why { font-size: 14px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.book.allow { border-color: #9cc6a3; background: #f2f8f0; }
+.book.allow .verdict { color: var(--ok); }
+.book.deny { border-color: #e2ac9c; background: #fbf0eb; }
+.book.deny .verdict { color: var(--bad); }
+.pill-st { display: inline-block; font-family: var(--mono); font-size: 12.5px; padding: 0 7px; border-radius: 99px; border: 1px solid var(--line); background: var(--cream); }
+
+/* ---------- Slide 5: bốn nhóm thuộc tính ---------- */
+.attr { cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+.attr:hover { border-color: var(--coffee); }
+.attr.on { border-color: var(--coffee); box-shadow: 0 0 0 3px #e9d3b3; }
+.attr .src { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
+
+/* ---------- Slide 6: bốn cổng ---------- */
+.gates { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; position: relative; }
+.gate { position: relative; border: 2px solid var(--line); background: var(--card); border-radius: 12px; padding: 12px 12px 10px; min-height: 150px; transition: all .3s; }
+.gate .gn { font-size: 12.5px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; display: flex; gap: 6px; align-items: center; }
+.gate .gq { font-weight: 600; margin: 4px 0 6px; font-size: 16px; line-height: 1.35; }
+.gate .gf { font-size: 13.5px; color: var(--muted); }
+.gate .gs { font-size: 14px; margin-top: 8px; font-weight: 600; min-height: 20px; }
+.gate.run { border-color: var(--warn); box-shadow: 0 0 0 4px var(--warn-bg); }
+.gate.pass { border-color: #9cc6a3; background: #f2f8f0; }
+.gate.pass .gs { color: var(--ok); }
+.gate.fail { border-color: var(--bad); background: #fbf0eb; }
+.gate.fail .gs { color: var(--bad); }
+.gate.skip { opacity: .38; }
+.gate:not(:last-child)::after { content: ""; position: absolute; right: -11px; top: 50%; width: 10px; height: 2px; background: #cdbfaa; }
+.gate.end { border-style: dashed; }
+
+/* ---------- Slide 7: giao diện và công cụ HTTP ---------- */
+.browser { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.browser .bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--cream); border-bottom: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+.browser .bar .dots i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #d3c2aa; margin-right: 4px; }
+.browser .bar .url { flex: 1; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; font-family: var(--mono); font-size: 12.5px; }
+.browser .view { padding: 12px 14px; }
+.blist { list-style: none; margin: 0; padding: 0; }
+.blist li { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-bottom: 1px dashed var(--line); font-size: 15.5px; transition: all .4s; }
+.blist li .sp { flex: 1; }
+.blist li.gone { background: var(--bad-bg); color: var(--bad); text-decoration: line-through; }
+
+/* ---------- Slide 9 và 13: luồng ---------- */
+.flow { display: flex; flex-direction: column; gap: 8px; }
+.fstep { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); opacity: .35; transition: all .3s; font-size: 16px; }
+.fstep.show { opacity: 1; }
+.fstep.ok { border-color: #9cc6a3; background: #f2f8f0; }
+.fstep.bad { border-color: #e2ac9c; background: #fbf0eb; }
+.fstep .ic { width: 22px; height: 22px; margin-top: 1px; }
+.fstep.ok .ic { color: var(--ok); } .fstep.bad .ic { color: var(--bad); }
+.have { display: flex; gap: 8px; align-items: center; font-size: 15.5px; padding: 4px 0; }
+
+/* ---------- Slide 10: nhóm bằng chứng ---------- */
+.bins { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+.bin { border: 2px dashed var(--line); border-radius: 12px; padding: 10px 14px; background: var(--card); min-height: 116px; transition: border-color .2s; }
+.bin.hit { border-color: var(--coffee); border-style: solid; }
+.bin h3 { font-family: var(--serif); font-size: 21px; font-weight: 600; color: var(--coffee-d); margin: 0 0 2px; display: flex; gap: 8px; align-items: center; }
+.bin .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip { font: inherit; font-size: 14.5px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 99px; padding: 5px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.chip:hover { border-color: var(--coffee); }
+.chip.on { background: var(--coffee); color: #fff; border-color: var(--coffee); }
+.pool { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- Slide 11: TOTP ---------- */
+.totp { display: grid; grid-template-columns: 300px minmax(0,1fr) 300px; gap: 18px; align-items: stretch; }
+.phone { border: 3px solid #3b2c23; border-radius: 30px; padding: 20px 16px 16px; background: #fff; text-align: center; position: relative; }
+.phone::before { content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 60px; height: 5px; border-radius: 9px; background: #3b2c23; }
+.phone .app { font-size: 13px; font-weight: 600; color: var(--muted); display: flex; gap: 6px; justify-content: center; align-items: center; margin-top: 6px; }
+.phone .acc { font-size: 13px; color: var(--muted); margin: 8px 0 2px; }
+.code6 { font-family: var(--mono); font-size: 44px; font-weight: 600; letter-spacing: .06em; color: var(--coffee-d); }
+.timebar { height: 6px; background: var(--cream); border-radius: 99px; overflow: hidden; margin: 8px 0 4px; }
+.timebar i { display: block; height: 100%; background: var(--coffee); transition: width .25s linear; }
+.srv { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 14px 16px; }
+.srv .codes { display: grid; gap: 4px; margin-top: 8px; font-family: var(--mono); font-size: 15px; }
+.srv .codes div { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: 6px; }
+.srv .codes div.match { background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+.secret { font-family: var(--mono); font-size: 18px; letter-spacing: .08em; background: var(--cream); border: 1px dashed #c8ad86; border-radius: 8px; padding: 6px 10px; display: inline-block; }
+.live { font-family: var(--mono); font-size: 15px; display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+input[type=range] { accent-color: var(--coffee); width: 100%; }
+
+/* ---------- Slide 12: thiết lập ---------- */
+.steps { display: flex; flex-direction: column; gap: 8px; }
+.stepbtn { font: inherit; text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 10px 12px; cursor: pointer; display: flex; gap: 10px; align-items: center; font-size: 16px; color: var(--ink); }
+.stepbtn .n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--cream); font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.stepbtn.on { border-color: var(--coffee); box-shadow: 0 0 0 3px #e9d3b3; }
+.stepbtn.on .n { background: var(--coffee); color: #fff; }
+.stepbtn.past .n { background: var(--ok-bg); color: var(--ok); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 15.5px; }
+.kv .k { color: var(--muted); }
+
+/* ---------- Slide 13: máy trạng thái ---------- */
+svg.sm { width: 100%; height: auto; }
+.sm .st rect { fill: var(--card); stroke: var(--line); stroke-width: 2; transition: all .3s; }
+.sm .st text { font-family: var(--sans); font-size: 17px; fill: var(--ink); text-anchor: middle; font-weight: 600; }
+.sm .st text.s { font-size: 13px; fill: var(--muted); font-weight: 400; }
+.sm .st.cur rect { fill: #f6ead6; stroke: var(--coffee); stroke-width: 3; }
+.sm .st.lock.cur rect { fill: var(--bad-bg); stroke: var(--bad); }
+.sm .st.full.cur rect { fill: var(--ok-bg); stroke: var(--ok); }
+.sm path.e { fill: none; stroke: #b9a68d; stroke-width: 2; }
+.sm path.e.flash { stroke: var(--coffee); stroke-width: 3.5; }
+.sm text.el { font-family: var(--mono); font-size: 13px; fill: var(--muted); text-anchor: middle; }
+.log { font-family: var(--mono); font-size: 14px; background: #2f2620; color: #f3e9da; border-radius: 10px; padding: 10px 12px; height: 190px; overflow: auto; }
+.log div { padding: 2px 0; border-bottom: 1px dashed #4a3a2e; }
+.log .r-ok { color: #a9d39a; } .log .r-bad { color: #f2a48f; } .log .r-warn { color: #f0c46c; }
+
+/* ---------- Slide 15: recovery code ---------- */
+.rcodes { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.rcode { font: inherit; font-family: var(--mono); font-size: 17px; letter-spacing: .05em; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--ink); }
+.rcode:hover { border-color: var(--coffee); }
+.rcode.used { text-decoration: line-through; color: var(--muted); background: var(--cream); }
+.rcode.old { opacity: .5; border-style: dashed; }
+
+/* ---------- Slide 16: phishing ---------- */
+svg.ph { width: 100%; height: auto; }
+.ph .nd rect { fill: var(--card); stroke: var(--line); stroke-width: 2; }
+.ph .nd.fake rect { fill: #fbf0eb; stroke: #e2ac9c; }
+.ph .nd.atk rect { fill: #f3ece4; stroke: #b9a68d; }
+.ph .nd text { font-family: var(--sans); font-size: 16px; font-weight: 600; text-anchor: middle; fill: var(--ink); }
+.ph .nd text.s { font-family: var(--mono); font-size: 12.5px; font-weight: 400; fill: var(--muted); }
+.ph .ar { opacity: 0; transition: opacity .35s; }
+.ph .ar.past { opacity: .25; }
+.ph .ar.now { opacity: 1; }
+.ph .ar path { fill: none; stroke: var(--coffee); stroke-width: 2.5; }
+.ph .ar path.dash { stroke-dasharray: 6 5; }
+.ph .ar.bad path { stroke: var(--bad); }
+.ph .ar text { font-family: var(--mono); font-size: 13px; fill: var(--coffee-d); text-anchor: middle; }
+.ph .ar rect { fill: var(--paper); }
+
+/* ---------- Slide 18: quiz ---------- */
+.quiz .opt { display: flex; width: 100%; text-align: left; font-size: 17px; padding: 11px 14px; margin-bottom: 8px; }
+.qdots { display: flex; gap: 6px; }
+.qdots i { width: 12px; height: 12px; border-radius: 50%; background: var(--line); display: block; }
+.qdots i.cur { background: var(--coffee); }
+.qdots i.r { background: var(--ok); } .qdots i.w { background: var(--bad); }
+
+.refs li { margin: 6px 0; font-size: 16.5px; }
+.refs a { color: var(--coffee); }
+
+/* ---------- Màn hình hẹp: bỏ co giãn, xếp dọc ---------- */
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+  .viewport { position: static; display: block; padding: 10px 10px 70px; overflow: visible; }
+  .stage { width: auto; height: auto; transform: none !important; }
+  .slide { position: relative; inset: auto; padding: 20px 16px; border-radius: 12px; min-height: calc(100vh - 80px); }
+  h2.title { font-size: 26px; }
+  .lede { font-size: 16px; }
+  .g2, .g-5-7, .g-7-5, .g3, .g4, .books, .bins, .totp, .gates, .rcodes { grid-template-columns: minmax(0,1fr); }
+  .gate:not(:last-child)::after { display: none; }
+  .gate { min-height: 0; }
+  .slide.lead, .slide.chapter { padding: 30px 20px; }
+  .slide.lead h1 { font-size: 40px; }
+  .slide.chapter h1 { font-size: 48px; }
+  .lead-art, .slide.chapter .big-ic { display: none; }
+  .slide.lead .hint { position: static; margin-top: 24px; }
+  .qrow { grid-template-columns: minmax(0,1fr); }
+  .qrow .choices { flex-wrap: wrap; }
+  .nav .ttl, .nav .lbl { display: none; }
+  .notes-panel { width: 100%; }
+  .code6 { font-size: 36px; }
+}
+</style>
+</head>
+<body>
+<div class="viewport" id="viewport">
+<div class="stage" id="stage">
+
+<!-- ===================== 1. Lead ===================== -->
+<section class="slide lead" data-title="Phân quyền và MFA">
+  <div class="kicker"><span data-icon="shield-check"></span>Block 9, phần sau JWT</div>
+  <h1>Phân quyền và MFA</h1>
+  <p class="sub">Server đã biết request của ai. Hai câu hỏi tiếp theo: người đó được làm gì, và làm sao biết người đăng nhập đúng là chủ tài khoản.</p>
+  <div class="author">MSc. Ngô Ngọc Đăng Khoa</div>
+  <div class="lead-art">
+    <div class="pill"><span data-icon="users"></span>RBAC: quyền theo role</div>
+    <div class="pill"><span data-icon="book-open"></span>ABAC: quyền theo thuộc tính</div>
+    <div class="pill"><span data-icon="smartphone"></span>MFA với TOTP</div>
+  </div>
+  <div class="hint"><span data-icon="keyboard"></span>Phím trái, phải để chuyển slide; phím N mở ghi chú giảng; phím F để toàn màn hình.</div>
+  <aside class="notes">
+    <p>Deck này dạy phần còn lại của Block 9 sau buổi JWT ở tuần 7: phân quyền (RBAC, ABAC) và MFA với TOTP. Mục tiêu là nguyên lý; hợp đồng lỗi chi tiết và bài tập nằm ở block9-deck.</p>
+    <p>Mọi ví dụ dùng Books. Dữ liệu, request và response trên các slide là MINH HỌA, chạy hoàn toàn trong browser, không gọi server thật. Các slide có phần tương tác: cho lớp đoán kết quả trước rồi mới bấm.</p>
+  </aside>
+</section>
+
+<!-- ===================== 2. Hai câu hỏi ===================== -->
+<section class="slide" data-title="Hai câu hỏi ở mỗi request">
+  <div class="kicker"><span data-icon="log-in"></span>Từ xác thực sang phân quyền</div>
+  <h2 class="title">Hai câu hỏi server đặt ra cho mỗi request</h2>
+  <div class="body g-5-7">
+    <div class="stack">
+      <div class="card">
+        <h3><span data-icon="id-card"></span>Xác thực</h3>
+        <p><b>Request này của ai?</b></p>
+        <p class="small muted">Bằng chứng: cookie <code>sid</code> (SSR) hoặc JWT (SPA). Thất bại: SSR chuyển tới <code>/login</code>, API trả <code>401</code>.</p>
+      </div>
+      <div class="card">
+        <h3><span data-icon="shield-check"></span>Phân quyền</h3>
+        <p><b>Người này được làm thao tác này trên bản ghi này không?</b></p>
+        <p class="small muted">Dữ liệu: role của user, thuộc tính của bản ghi. Thất bại: trang <code>403</code> ở SSR, status <code>403</code> ở API.</p>
+      </div>
+      <p class="small muted">Phân quyền chạy sau xác thực: chưa biết người gọi là ai thì chưa có gì để xét quyền.</p>
+    </div>
+    <div class="stack" id="classify">
+      <div class="label"><span data-icon="list-checks"></span>Phân loại ba request <span class="tag-mh">MINH HỌA</span></div>
+      <div class="qrow" data-answer="auth" data-fb="Server chưa biết người gọi là ai. SSR trả 303 tới /login.">
+        <div class="req"><code>GET /books/3/edit</code><br><span class="muted small">Không có cookie <code>sid</code></span></div>
+        <div class="choices"></div><div class="fb result"></div>
+      </div>
+      <div class="qrow" data-answer="perm" data-fb="Server biết người gọi là Viewer, nhưng Viewer không có quyền xóa sách. Trang 403.">
+        <div class="req"><code>DELETE /books/3</code><br><span class="muted small">Viewer đã đăng nhập</span></div>
+        <div class="choices"></div><div class="fb result"></div>
+      </div>
+      <div class="qrow" data-answer="ok" data-fb="Admin đã đăng nhập và có quyền book:delete. Request tới handler.">
+        <div class="req"><code>DELETE /books/3</code><br><span class="muted small">Admin đã đăng nhập</span></div>
+        <div class="choices"></div><div class="fb result"></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Xác thực đã học ở Block 8 (session) và tuần 7 (JWT). Phần này trả lời câu hỏi thứ hai. Tên 401 Unauthorized dễ gây nhầm: theo RFC 9110, 401 nghĩa là thiếu thông tin xác thực hợp lệ; 403 nghĩa là server hiểu request nhưng từ chối thực hiện.</p>
+    <p>Cho lớp trả lời từng dòng trước khi bấm. Dòng hai là trường hợp cần nhấn mạnh: người gọi đã đăng nhập hợp lệ nhưng vẫn bị từ chối, vì đăng nhập chỉ trả lời câu hỏi thứ nhất.</p>
+  </aside>
+</section>
+
+<!-- ===================== 3. RBAC ===================== -->
+<section class="slide" data-title="RBAC">
+  <div class="kicker"><span data-icon="users"></span>Phân quyền, mô hình 1</div>
+  <h2 class="title">RBAC: quyền theo role</h2>
+  <div class="body g-5-7">
+    <div class="stack">
+      <div class="card">
+        <p>RBAC (role-based access control, kiểm soát truy cập theo role): server tra role của user trong một bảng quyền.</p>
+        <ul class="clean small">
+          <li>Role: nhóm quyền gán cho user, ví dụ Viewer, Editor, Admin</li>
+          <li>Quyền: cặp <code>tài nguyên:hành động</code>, ví dụ <code>book:update</code></li>
+          <li>Câu hỏi của server: role này có quyền này không</li>
+        </ul>
+      </div>
+      <div class="card small muted">Role đã có từ Block 8 ở cột <code>users.role</code>, mặc định <code>viewer</code>. Role đọc từ database theo user của session, không đọc từ form.</div>
+    </div>
+    <div class="stack" id="rbac">
+      <div class="row"><span class="label" style="margin:0">Người gọi</span><div class="seg" data-k="role"></div></div>
+      <table class="t" id="rbac-table"></table>
+      <div class="row"><span class="label" style="margin:0">Thao tác</span><div class="seg" data-k="act"></div></div>
+      <div class="result" id="rbac-out"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Bảng quyền là giả định của ví dụ; ứng dụng thật công bố bảng của mình. Phép kiểm tra ngắn: lấy role từ user mà session cho biết, tra bảng, thiếu quyền thì trả trang 403.</p>
+    <p>Cho lớp chọn Editor rồi bấm Xóa sách, sau đó đổi sang Admin. Cùng một request, kết quả khác nhau chỉ vì role. Hỏi tiếp: Editor sửa được những cuốn sách nào. Câu trả lời của bảng là tất cả, dẫn sang slide sau.</p>
+  </aside>
+</section>
+
+<!-- ===================== 4. Giới hạn RBAC ===================== -->
+<section class="slide" data-title="Giới hạn của RBAC">
+  <div class="kicker"><span data-icon="triangle-alert"></span>Giới hạn của RBAC</div>
+  <h2 class="title">Cùng role Editor, nhưng mỗi người chỉ được sửa sách của mình</h2>
+  <p class="lede">Yêu cầu nghiệp vụ (giả định): Editor chỉ sửa sách mình phụ trách và sách còn ở trạng thái <code>draft</code>. Hai Editor có cùng role, nên bảng role không phân biệt được họ.</p>
+  <div class="body" id="limit">
+    <div class="row">
+      <span class="label" style="margin:0">Người gọi</span><div class="seg" data-k="who"></div>
+      <span style="width:18px"></span>
+      <span class="label" style="margin:0">Server kiểm tra</span><div class="seg" data-k="mode"></div>
+      <span class="tag-mh">MINH HỌA</span>
+    </div>
+    <div class="books" id="limit-books"></div>
+    <div class="result" id="limit-out"></div>
+  </div>
+  <aside class="notes">
+    <p>Dữ liệu là giả định: sách 3 do user 7 phụ trách, còn draft; sách 4 do user 8 phụ trách; sách 5 của user 7 đã published. managerId là id của user phụ trách cuốn sách.</p>
+    <p>Bật chế độ Chỉ RBAC: cả hai Editor sửa được cả ba cuốn. Chuyển sang RBAC cộng điều kiện trên sách: mỗi Editor chỉ còn sách của mình đang draft. Thông tin quyết định nằm ở bản ghi sách, không nằm ở role. Đó là lý do cần ABAC.</p>
+  </aside>
+</section>
+
+<!-- ===================== 5. ABAC ===================== -->
+<section class="slide" data-title="ABAC">
+  <div class="kicker"><span data-icon="book-open"></span>Phân quyền, mô hình 2</div>
+  <h2 class="title">ABAC: quyết định theo thuộc tính</h2>
+  <p class="lede">ABAC (attribute-based access control, kiểm soát truy cập theo thuộc tính): quy tắc xét thuộc tính của bốn nhóm. Bấm vào từng nhóm để xem phần quy tắc dùng nhóm đó.</p>
+  <div class="body g-7-5" id="abac">
+    <div class="body g2" style="gap:12px">
+      <div class="card attr" data-g="sub"><h3><span data-icon="user-round"></span>Subject (người gọi)</h3><p class="small"><code>user.role</code>, <code>user.id</code></p><div class="src">Nguồn: user của session</div></div>
+      <div class="card attr" data-g="act"><h3><span data-icon="pencil"></span>Action (hành động)</h3><p class="small"><code>update</code></p><div class="src">Nguồn: route của request</div></div>
+      <div class="card attr" data-g="res"><h3><span data-icon="book-open"></span>Resource (tài nguyên)</h3><p class="small"><code>book.managerId</code>, <code>book.status</code></p><div class="src">Nguồn: bản ghi đọc từ database</div></div>
+      <div class="card attr" data-g="env"><h3><span data-icon="clock"></span>Environment (môi trường)</h3><p class="small">Giờ gửi request, tùy chọn</p><div class="src">Quy tắc ví dụ không dùng nhóm này</div></div>
+    </div>
+    <div class="stack">
+      <div class="label"><span data-icon="shield-check"></span>Quy tắc cho hành động <span data-g="act" class="mono">update</span></div>
+<pre class="code"><span data-g="act">update</span> được phép khi:
+  <span data-g="sub">user.role</span> = Admin
+  hoặc (
+    <span data-g="sub">user.role</span> = Editor
+    và <span data-g="res">book.managerId</span> = <span data-g="sub">user.id</span>
+    và <span data-g="res">book.status</span> = draft
+  )</pre>
+      <div class="card small">Role vẫn là một thuộc tính của người gọi. RBAC trả lời "loại người dùng này được làm gì"; điều kiện trên bản ghi giới hạn thêm "trên cuốn sách nào".</div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Bốn nhóm thuộc tính theo mô tả ABAC của NIST SP 800-162: subject, action, resource, environment. Điểm cần nhấn mạnh là nguồn của từng thuộc tính: người gọi lấy từ session, sách lấy từ database. Không thuộc tính nào lấy từ form hoặc hidden field.</p>
+    <p>Quy tắc trên là của ví dụ Books. Bài tập dùng chefId và status của Dish. Block không dùng policy engine; quy tắc viết trực tiếp trong middleware hoặc đầu handler là đủ.</p>
+  </aside>
+</section>
+
+<!-- ===================== 6. Bốn cổng ===================== -->
+<section class="slide" data-title="Bốn cổng kiểm tra">
+  <div class="kicker"><span data-icon="server"></span>Thứ tự kiểm tra tại server</div>
+  <h2 class="title">Một request sửa sách đi qua bốn cổng</h2>
+  <div class="body" id="gates" style="gap:14px">
+    <div class="row">
+      <span class="label" style="margin:0">Người gọi</span><div class="seg" data-k="caller"></div>
+    </div>
+    <div class="row">
+      <span class="label" style="margin:0">Sách</span><div class="seg" data-k="book"></div>
+      <button class="btn primary" id="gates-run"><span data-icon="send"></span>Gửi <span class="mono" id="gates-req">PATCH /books/3</span></button>
+      <span class="tag-mh">MINH HỌA</span>
+    </div>
+    <div class="gates" id="gates-row"></div>
+    <div class="result info" id="gates-out"><span data-icon="play"></span><span>Chọn người gọi và sách, rồi gửi request.</span></div>
+    <p class="small muted" style="margin:0">Thứ tự có lý do: chưa biết người gọi thì không tải dữ liệu; chưa tải sách thì chưa có thuộc tính để xét. Quy tắc cổng 4: Admin, hoặc Editor phụ trách sách đang <code>draft</code>.</p>
+  </div>
+  <aside class="notes">
+    <p>Cổng là cách gọi trong deck cho một bước kiểm tra; trong mã đó là một middleware hoặc đoạn đầu handler. Cổng 1 hỏi có phiên đăng nhập không, thất bại thì 303 tới /login. Cổng 2 kiểm tra role theo RBAC. Cổng 3 tải sách từ database, không có thì 404 như Block 5. Cổng 4 kiểm tra thuộc tính theo ABAC.</p>
+    <p>Gợi ý chạy thử theo thứ tự: Chưa đăng nhập; Viewer 9; Editor 7 với sách 99; Editor 8 với sách 3; Editor 7 với sách 5; Editor 7 với sách 3; Admin 1 với sách 5. Mỗi lần cho lớp đoán request dừng ở cổng nào.</p>
+    <p>Một số hệ thống trả 404 thay cho 403 để không lộ việc sách có tồn tại; bài tập dùng 403 để nghiệm thu rõ ràng.</p>
+  </aside>
+</section>
+
+<!-- ===================== 7. Ẩn nút ===================== -->
+<section class="slide" data-title="Ẩn nút không chặn request">
+  <div class="kicker"><span data-icon="eye"></span>Giao diện và server</div>
+  <h2 class="title">Ẩn nút Xóa trên giao diện không chặn được request</h2>
+  <div class="body g2" id="hidden">
+    <div class="stack">
+      <div class="browser">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">books.example/books</span><span>Viewer 9</span></div>
+        <div class="view">
+          <ul class="blist" id="hidden-list"></ul>
+          <p class="tiny muted" style="margin:8px 0 0">Template không render nút Xóa cho Viewer.</p>
+        </div>
+      </div>
+      <ul class="clean small">
+        <li>Role, <code>managerId</code> trong form hoặc hidden field là dữ liệu client sửa được trước khi gửi</li>
+        <li>Server lấy danh tính từ session, thuộc tính sách từ database</li>
+        <li>Mở được form sửa (<code>GET</code>) chưa bảo đảm ghi được (<code>PATCH</code>): server kiểm tra lại ở request ghi</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="label"><span data-icon="send"></span>Công cụ HTTP, không qua giao diện <span class="tag-mh">MINH HỌA</span></div>
+<pre class="code"><span class="k">DELETE</span> /books/3 HTTP/1.1
+Host: books.example
+Cookie: sid=<span class="s">(phiên của Viewer 9)</span></pre>
+      <label class="switch"><input type="checkbox" id="hidden-guard"><span class="track"></span><span>Route <code>DELETE /books/:id</code> có kiểm tra quyền ở server</span></label>
+      <div class="row"><button class="btn primary" id="hidden-send"><span data-icon="send"></span>Gửi request</button><button class="btn" id="hidden-reset"><span data-icon="rotate-ccw"></span>Khôi phục dữ liệu</button></div>
+      <div class="result info" id="hidden-out"><span data-icon="play"></span><span>Tắt kiểm tra rồi gửi; sau đó bật kiểm tra và gửi lại.</span></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Template chỉ quyết định giao diện. Bất kỳ ai có cookie hợp lệ đều gửi được request bằng curl, Postman hay DevTools mà không cần nút. Vì vậy ẩn nút phục vụ trải nghiệm; kiểm tra ở server mới bảo vệ dữ liệu.</p>
+    <p>Lỗi hay gặp trong mã do coding agent sinh: template ẩn nút xóa với Viewer nhưng route DELETE không kiểm tra; hoặc handler tin hidden field managerId. Nghiệm thu bài tập yêu cầu gửi request trực tiếp, không chỉ thao tác qua form.</p>
+  </aside>
+</section>
+
+<!-- ===================== 8. Chương MFA ===================== -->
+<section class="slide chapter" data-title="MFA">
+  <div class="num">Phần 2</div>
+  <h1>MFA</h1>
+  <p>Xác thực nhiều yếu tố: password bị lộ thì kẻ tấn công vẫn còn thiếu một bằng chứng.</p>
+  <div class="big-ic"><span data-icon="smartphone"></span></div>
+  <aside class="notes">
+    <p>Phần MFA gồm: vì sao cần yếu tố thứ hai, ba nhóm bằng chứng, nguyên lý TOTP, thiết lập, trạng thái chờ MFA, các đường vòng phải chặn, recovery code và hạn chế của TOTP. Không triển khai passkeys, WebAuthn hay đăng nhập mạng xã hội. Nguồn chính: OWASP Multifactor Authentication Cheat Sheet và RFC 6238.</p>
+  </aside>
+</section>
+
+<!-- ===================== 9. Password bị lộ ===================== -->
+<section class="slide" data-title="Password bị lộ">
+  <div class="kicker"><span data-icon="user-x"></span>Vì sao cần yếu tố thứ hai</div>
+  <h2 class="title">Password bị lộ: MFA chặn kẻ tấn công ở bước nào</h2>
+  <div class="body g-5-7" id="leak">
+    <div class="stack">
+      <div class="card">
+        <h3><span data-icon="user-x"></span>Kẻ tấn công <span class="tag-mh">MINH HỌA</span></h3>
+        <p class="small muted">Password của <code><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="7d18191409120f4a3d1f1212160e5318051c100d1118">[email&#160;protected]</a></code> bị lộ qua một trang giả (giả định).</p>
+        <div class="have"><span data-icon="circle-check" class="yes"></span>Có email và password</div>
+        <div class="have"><span data-icon="circle-x" class="no"></span>Không có điện thoại của chủ tài khoản</div>
+      </div>
+      <label class="switch"><input type="checkbox" id="leak-mfa"><span class="track"></span><span>Tài khoản đã bật MFA</span></label>
+      <button class="btn primary" id="leak-run" style="align-self:flex-start"><span data-icon="log-in"></span>Kẻ tấn công đăng nhập</button>
+      <div class="card small">MFA (multi-factor authentication, xác thực nhiều yếu tố): đăng nhập yêu cầu hai bằng chứng thuộc hai nhóm khác nhau.</div>
+    </div>
+    <div class="flow" id="leak-flow"></div>
+  </div>
+  <aside class="notes">
+    <p>Chạy hai lần: lần đầu tắt MFA, kẻ tấn công vào được ngay sau bước password. Lần hai bật MFA, request dừng ở bước nhập mã vì mã sinh trên điện thoại của chủ tài khoản.</p>
+    <p>Password có thể lộ qua trang giả, qua rò rỉ dữ liệu ở dịch vụ khác khi người dùng dùng lại password, hoặc qua đoán. Yếu tố thứ hai không làm password khó lộ hơn; nó làm password bị lộ không còn đủ để đăng nhập.</p>
+  </aside>
+</section>
+
+<!-- ===================== 10. Ba nhóm ===================== -->
+<section class="slide" data-title="Ba nhóm bằng chứng">
+  <div class="kicker"><span data-icon="key-round"></span>Yếu tố xác thực</div>
+  <h2 class="title">Ba nhóm bằng chứng: hai bằng chứng phải khác nhóm</h2>
+  <div class="body" id="factors" style="gap:14px">
+    <div class="bins">
+      <div class="bin" data-bin="know"><h3><span data-icon="brain"></span>Biết</h3><div class="small muted">Thứ người dùng ghi nhớ</div><div class="chips"></div></div>
+      <div class="bin" data-bin="have"><h3><span data-icon="smartphone"></span>Có</h3><div class="small muted">Thứ người dùng sở hữu</div><div class="chips"></div></div>
+      <div class="bin" data-bin="are"><h3><span data-icon="fingerprint"></span>Là</h3><div class="small muted">Đặc điểm cơ thể</div><div class="chips"></div></div>
+    </div>
+    <div class="label"><span data-icon="hand"></span>Chọn hai bằng chứng cho một lần đăng nhập</div>
+    <div class="pool" id="factors-pool"></div>
+    <div class="result info" id="factors-out"><span data-icon="play"></span><span>Chưa chọn bằng chứng nào.</span></div>
+    <p class="small muted" style="margin:0">Vị trí, địa chỉ IP: chỉ dùng để đánh giá rủi ro của lần đăng nhập, không tính là bằng chứng.</p>
+  </div>
+  <aside class="notes">
+    <p>Theo OWASP Multifactor Authentication Cheat Sheet, MFA yêu cầu bằng chứng từ ít nhất hai nhóm khác nhau trong biết, có, là. NIST SP 800-63B cũng không tính vị trí là một yếu tố.</p>
+    <p>Thử hai cặp: Password và PIN (cùng nhóm Biết, chưa phải MFA); Password và Mã từ ứng dụng authenticator (Biết và Có, là MFA). Lý do cùng nhóm không đủ: trang giả lấy được password thì cũng lấy được PIN bằng đúng cách đó.</p>
+  </aside>
+</section>
+
+<!-- ===================== 11. TOTP ===================== -->
+<section class="slide" data-title="TOTP">
+  <div class="kicker"><span data-icon="timer"></span>Ví dụ chính của nhóm Có</div>
+  <h2 class="title">TOTP: điện thoại và server tự tính cùng một mã</h2>
+  <p class="lede">TOTP (time-based one-time password, RFC 6238): mã 6 số tính từ secret chung và thời gian hiện tại, đổi sau mỗi 30 giây. Mã chạy thật trên trang này với secret <span class="tag-mh">MINH HỌA</span>.</p>
+  <div class="body" id="totp" style="gap:14px">
+    <div class="totp">
+      <div class="phone">
+        <div class="app"><span data-icon="smartphone"></span>Ứng dụng authenticator</div>
+        <div class="acc">Books: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="6306070a170c115423010c0c08104d061b020e130f06">[email&#160;protected]</a></div>
+        <div class="code6" id="t-phone">000 000</div>
+        <div class="timebar"><i id="t-bar"></i></div>
+        <div class="tiny muted" id="t-left">còn 30 giây</div>
+        <div class="tiny muted" id="t-pclock" style="margin-top:6px"></div>
+      </div>
+      <div class="stack">
+        <div><div class="label"><span data-icon="key-round"></span>Secret chung</div><span class="secret" id="t-secret">JBSW Y3DP EHPK 3PXP</span>
+          <div class="tiny muted" style="margin-top:4px">Chỉ chép sang điện thoại một lần, lúc thiết lập. Lúc đăng nhập, hai bên không trao đổi gì.</div></div>
+<pre class="code">bước = floor(t / 30)        <span class="c">// t: số giây Unix</span>
+mã   = 6 số rút từ HMAC(secret, bước)</pre>
+        <div class="live"><span class="muted">t (server)</span><span id="t-t"></span><span class="muted">bước</span><span id="t-step"></span></div>
+      </div>
+      <div class="srv">
+        <div class="label" style="margin:0"><span data-icon="server"></span>Server tính lại</div>
+        <div class="tiny muted">Chấp nhận bước hiện tại và một bước lân cận</div>
+        <div class="codes" id="t-codes"></div>
+      </div>
+    </div>
+    <div class="body g2" style="gap:14px;align-items:center">
+      <div class="stack" style="gap:4px">
+        <label class="small" for="t-drift">Đồng hồ điện thoại lệch: <b id="t-drift-v">0 giây</b></label>
+        <input type="range" id="t-drift" min="-120" max="120" step="10" value="0">
+        <label class="switch small"><input type="checkbox" id="t-wrong"><span class="track"></span><span>Điện thoại dùng secret khác (người không có secret)</span></label>
+      </div>
+      <div class="result" id="t-out"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Trang tính TOTP thật theo RFC 6238 (HMAC-SHA1, bước 30 giây, 6 chữ số) bằng JavaScript trong browser. Secret JBSWY3DPEHPK3PXP là chuỗi minh họa công khai; nếu muốn, quét thử bằng ứng dụng authenticator thật để thấy cùng mã.</p>
+    <p>Kéo thanh lệch đồng hồ: lệch tới khoảng 30 giây vẫn được chấp nhận vì server nhận một bước lân cận, theo khuyến nghị ở RFC 6238 mục 5.2; lệch 60 giây trở lên thì bị từ chối. Bật secret khác: mã hoàn toàn khác, vì HMAC không tính lại được nếu không có secret.</p>
+    <p>Sinh viên không cần nhớ cách rút 6 số từ HMAC; chỉ cần biết mã phụ thuộc vào secret và số bước.</p>
+  </aside>
+</section>
+
+<!-- ===================== 12. Thiết lập ===================== -->
+<section class="slide" data-title="Thiết lập TOTP">
+  <div class="kicker"><span data-icon="qr-code"></span>Thiết lập một lần</div>
+  <h2 class="title">Thiết lập TOTP: bốn bước</h2>
+  <div class="body g-5-7" id="setup">
+    <div class="steps" id="setup-steps"></div>
+    <div class="stack">
+      <div class="card" id="setup-detail" style="min-height:190px"></div>
+      <div class="body g2" style="gap:12px">
+        <div class="card"><div class="label"><span data-icon="server"></span>Server lưu</div><div class="kv" id="setup-server"></div></div>
+        <div class="card"><div class="label"><span data-icon="smartphone"></span>Điện thoại có</div><div class="kv" id="setup-phone"></div></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Bước 3 là lý do có bước xác nhận: nếu bật MFA ngay sau khi hiện QR mà user quét nhầm hoặc đồng hồ điện thoại lệch, user sẽ bị khóa ngoài tài khoản. Chỉ khi mã đầu tiên đúng, server mới đặt mfaEnabled = true.</p>
+    <p>Secret khác password ở cách lưu: server cần giá trị gốc để tính mã, nên không băm một chiều. Lưu ở dạng mã hóa bằng khóa tách khỏi database, không ghi log, không trả lại sau bước thiết lập. QR chứa một URI dạng otpauth mà ứng dụng authenticator đọc được.</p>
+  </aside>
+</section>
+
+<!-- ===================== 13. Trạng thái chờ MFA ===================== -->
+<section class="slide" data-title="Trạng thái chờ MFA">
+  <div class="kicker"><span data-icon="door-open"></span>Đăng nhập hai bước</div>
+  <h2 class="title">Trạng thái chờ MFA: password đúng chưa phải là đã đăng nhập</h2>
+  <div class="body g-7-5" id="sm">
+    <div class="stack">
+      <svg class="sm" viewBox="0 0 700 250" role="img" aria-label="Sơ đồ trạng thái đăng nhập">
+        <defs><marker id="sm-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b9a68d"/></marker></defs>
+        <path class="e" id="e-login" d="M170 60 H255" marker-end="url(#sm-a)"/>
+        <text class="el" x="212" y="45">password</text>
+        <path class="e" id="e-ok" d="M445 60 H530" marker-end="url(#sm-a)"/>
+        <text class="el" x="487" y="45">mã đúng</text>
+        <path class="e" id="e-wrong" d="M330 92 C 300 135, 400 135, 370 92" marker-end="url(#sm-a)"/>
+        <text class="el" x="350" y="146">mã sai, đếm lần</text>
+        <path class="e" id="e-lock" d="M350 160 V185" marker-end="url(#sm-a)"/>
+        <g class="st" data-st="none"><rect x="10" y="30" width="160" height="62" rx="12"/><text x="90" y="58">Chưa đăng nhập</text><text class="s" x="90" y="77">không có danh tính</text></g>
+        <g class="st" data-st="pending"><rect x="255" y="30" width="190" height="62" rx="12"/><text x="350" y="58">Chờ MFA</text><text class="s" x="350" y="77">session có cờ mfaPending</text></g>
+        <g class="st full" data-st="full"><rect x="530" y="30" width="160" height="62" rx="12"/><text x="610" y="58">Đăng nhập đủ</text><text class="s" x="610" y="77">sid mới, qua cổng 1</text></g>
+        <g class="st lock" data-st="lock"><rect x="270" y="187" width="160" height="56" rx="12"/><text x="350" y="212">Khóa tạm</text><text class="s" x="350" y="230">quá số lần thử</text></g>
+      </svg>
+      <div class="row">
+        <button class="btn" data-ev="login"><span data-icon="key-round"></span>POST /login, password đúng</button>
+        <button class="btn" data-ev="wrong"><span data-icon="circle-x"></span>POST /mfa, mã sai</button>
+        <button class="btn" data-ev="ok"><span data-icon="circle-check"></span>POST /mfa, mã đúng</button>
+        <button class="btn" data-ev="admin"><span data-icon="lock"></span>GET /admin</button>
+        <button class="btn" data-ev="reset"><span data-icon="rotate-ccw"></span>Làm lại</button>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="label"><span data-icon="server"></span>Request và kết quả <span class="tag-mh">MINH HỌA</span></div>
+      <div class="log" id="sm-log"></div>
+      <ul class="clean small">
+        <li>Phiên chờ MFA chỉ dùng được ở route nhập mã</li>
+        <li>Mã đúng: sinh <code>sid</code> mới cho phiên đầy đủ</li>
+        <li>Giới hạn 5 lần sai là giá trị giả định</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Kịch bản gợi ý: bấm GET /admin khi chưa đăng nhập; POST /login; GET /admin ngay sau bước password (bị chặn, đây là điểm chính); nhập mã sai vài lần; nhập mã đúng; GET /admin lần nữa (qua cổng 1, đi tiếp tới phân quyền). Bấm Làm lại rồi nhập mã sai 5 lần để thấy khóa tạm.</p>
+    <p>Lỗi hay gặp: server tạo session đầy đủ ngay sau password rồi chỉ chuyển hướng tới trang nhập mã; người dùng gõ thẳng URL quản trị là vào được. Kiểm tra bằng công cụ HTTP sau bước password. Đổi session ID khi mã đúng để một sid có từ trước không trở thành phiên đầy đủ.</p>
+  </aside>
+</section>
+
+<!-- ===================== 14. Đường vòng ===================== -->
+<section class="slide" data-title="Những đường vòng phải chặn">
+  <div class="kicker"><span data-icon="shield-alert"></span>Lỗi hay gặp khi làm MFA</div>
+  <h2 class="title">Những đường vòng phải chặn ở bước MFA</h2>
+  <div class="body g-5-7" id="brute">
+    <div class="card stack" style="gap:10px">
+      <h3><span data-icon="refresh-cw"></span>Giới hạn số lần thử</h3>
+      <p class="small">Mã 6 số có 1.000.000 giá trị. Server chấp nhận 3 mã cùng lúc (bước hiện tại và hai bước lân cận).</p>
+      <label class="small" for="b-n">Số lần thử server cho phép: <b id="b-n-v"></b></label>
+      <input type="range" id="b-n" min="0" max="6" step="1" value="0">
+      <div class="result" id="b-out"></div>
+      <p class="tiny muted" style="margin:0">Ước lượng giả định: mỗi lần thử một mã khác nhau, xác suất trúng khoảng số lần thử nhân 3 chia 1.000.000.</p>
+    </div>
+    <div class="body g2" style="gap:12px">
+      <div class="card"><h3><span data-icon="ban"></span>Mã đã dùng</h3><p class="small">Server nhớ bước thời gian của mã vừa chấp nhận; gửi lại cùng mã trong 30 giây đó bị từ chối.</p></div>
+      <div class="card"><h3><span data-icon="log-in"></span>Mọi đường đăng nhập</h3><p class="small">Form SSR, API đăng nhập và mọi route cấp session hoặc token đều phải qua bước MFA.</p></div>
+      <div class="card"><h3><span data-icon="mail"></span>Reset password</h3><p class="small">Chỉ chứng minh đọc được hộp thư: không tắt MFA, không tạo phiên. Lần đăng nhập sau vẫn hỏi mã.</p></div>
+      <div class="card"><h3><span data-icon="lock"></span>Đổi hoặc tắt MFA</h3><p class="small">Yêu cầu nhập lại password và một mã, dù session đang đăng nhập đầy đủ.</p></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Kéo thanh số lần thử: không giới hạn thì kẻ có password chỉ cần thử đủ mã; giới hạn 5 lần thì xác suất trúng khoảng 0,0015%. OWASP nêu giới hạn số lần thử là bắt buộc vì không gian mã nhỏ. Con số trên là ước lượng đơn giản hóa, không tính việc cửa sổ mã đổi sau 30 giây.</p>
+    <p>Bốn thẻ bên phải là bốn đường vòng thường gặp. RFC 6238 mục 5.2 yêu cầu không chấp nhận lần gửi thứ hai của mã đã xác thực thành công. OWASP nhắc đường đăng nhập thứ hai (ví dụ API riêng) là chỗ hay bị quên MFA, và quy trình đặt lại hoặc tắt MFA phải yêu cầu xác thực lại.</p>
+  </aside>
+</section>
+
+<!-- ===================== 15. Recovery code ===================== -->
+<section class="slide" data-title="Recovery code">
+  <div class="kicker"><span data-icon="life-buoy"></span>Mất điện thoại</div>
+  <h2 class="title">Recovery code: mã dự phòng, mỗi mã dùng một lần</h2>
+  <div class="body g2" id="rec">
+    <div class="stack">
+      <div class="label"><span data-icon="notebook-pen"></span>Mã user đã lưu lúc bật MFA <span class="tag-mh">MINH HỌA</span></div>
+      <div class="rcodes" id="rec-codes"></div>
+      <div class="row"><button class="btn" id="rec-new"><span data-icon="refresh-cw"></span>Sinh nhóm mã mới</button><span class="small muted">Bấm vào một mã để nhập ở bước MFA</span></div>
+      <div class="result info" id="rec-out"><span data-icon="play"></span><span>Dùng một mã, rồi bấm lại đúng mã đó.</span></div>
+    </div>
+    <div class="stack">
+      <div class="label"><span data-icon="server"></span>Server lưu, không có mã gốc</div>
+      <table class="t" id="rec-table"></table>
+      <ul class="clean small">
+        <li>Mã hiện một lần duy nhất lúc tạo; server chỉ giữ hash và <code>usedAt</code>, như reset token ở Block 8</li>
+        <li>Sinh nhóm mới thì nhóm cũ vô hiệu</li>
+        <li>Recovery code thay cho mã TOTP ở bước MFA, nên cũng có giới hạn số lần thử</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Người dùng chỉ có TOTP mà mất điện thoại thì không vào được tài khoản; OWASP nêu recovery code dùng một lần cấp lúc thiết lập là một lựa chọn khôi phục. Số lượng mã và độ dài là quyết định của nhóm; sáu mã trên slide là giả định.</p>
+    <p>Bấm một mã: được chấp nhận, usedAt được ghi. Bấm lại: bị từ chối. Bấm Sinh nhóm mã mới rồi thử mã cũ: bị từ chối vì nhóm cũ đã vô hiệu. Hash trên bảng là SHA-1 rút gọn chỉ để hiển thị.</p>
+  </aside>
+</section>
+
+<!-- ===================== 16. Phishing ===================== -->
+<section class="slide" data-title="Hạn chế của TOTP">
+  <div class="kicker"><span data-icon="fish"></span>Hạn chế của TOTP</div>
+  <h2 class="title">Trang giả chuyển tiếp mã TOTP trong cùng 30 giây</h2>
+  <div class="body" id="phish" style="gap:12px">
+    <svg class="ph" viewBox="0 0 1160 290" role="img" aria-label="Sơ đồ trang giả chuyển tiếp mã">
+      <defs>
+        <marker id="ph-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6b4a33"/></marker>
+        <marker id="ph-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b2452f"/></marker>
+      </defs>
+      <g class="nd"><rect x="20" y="40" width="220" height="80" rx="14"/><text x="130" y="76">Người dùng</text><text class="s" x="130" y="98">đọc email giả</text></g>
+      <g class="nd fake"><rect x="470" y="40" width="220" height="80" rx="14"/><text x="580" y="76">Trang giả</text><text class="s" x="580" y="98">books-login.example</text></g>
+      <g class="nd"><rect x="920" y="40" width="220" height="80" rx="14"/><text x="1030" y="76">Trang thật</text><text class="s" x="1030" y="98">books.example</text></g>
+      <g class="nd atk"><rect x="470" y="200" width="220" height="70" rx="14"/><text x="580" y="232">Kẻ tấn công</text><text class="s" x="580" y="252">giữ phiên nhận được</text></g>
+      <g class="ar" data-s="1"><path d="M240 62 H466" marker-end="url(#ph-a)"/><rect x="290" y="40" width="126" height="18" rx="4"/><text x="353" y="54">password</text></g>
+      <g class="ar" data-s="2"><path d="M690 60 H916" marker-end="url(#ph-a)"/><rect x="745" y="38" width="116" height="18" rx="4"/><text x="803" y="52">password</text>
+        <path class="dash" d="M920 86 H694" marker-end="url(#ph-a)"/><rect x="726" y="88" width="154" height="18" rx="4"/><text x="803" y="102">yêu cầu mã TOTP</text></g>
+      <g class="ar" data-s="3"><path d="M240 100 H466" marker-end="url(#ph-a)"/><rect x="300" y="104" width="106" height="18" rx="4"/><text x="353" y="118">mã 6 số</text>
+        <path d="M690 112 H916" marker-end="url(#ph-a)"/><rect x="720" y="116" width="166" height="18" rx="4"/><text x="803" y="130">cùng mã, sau 2 giây</text></g>
+      <g class="ar bad" data-s="4"><path d="M1030 120 V235 H694" marker-end="url(#ph-b)"/><rect x="790" y="216" width="150" height="18" rx="4"/><text x="865" y="230">cookie phiên</text></g>
+    </svg>
+    <div class="row"><button class="btn" id="ph-prev"><span data-icon="chevron-left"></span>Bước trước</button><button class="btn primary" id="ph-next">Bước tiếp<span data-icon="chevron-right"></span></button><span class="tag-mh">MINH HỌA</span></div>
+    <div class="result info" id="ph-out"></div>
+    <p class="small muted" style="margin:0">Mã TOTP không chứa thông tin về tên miền nơi người dùng nhập nó. Passkeys và WebAuthn gắn credential với tên miền nên trang giả không dùng lại được; nội dung này nằm ngoài block.</p>
+  </div>
+  <aside class="notes">
+    <p>OWASP xếp TOTP vào nhóm có thể bị phishing dù mã chỉ sống 30 giây: trang giả đứng giữa và chuyển tiếp ngay. Thời gian 2 giây trên sơ đồ là giả định để cho thấy độ trễ nhỏ hơn nhiều so với bước 30 giây.</p>
+    <p>Kết luận cho lớp: TOTP chặn được trường hợp password bị lộ đơn thuần, không chặn được trang giả chuyển tiếp trong thời gian thực. Người dùng vẫn cần kiểm tra tên miền trước khi nhập.</p>
+  </aside>
+</section>
+
+<!-- ===================== 17. SPA ===================== -->
+<section class="slide" data-title="MFA khi client là SPA">
+  <div class="kicker"><span data-icon="monitor-smartphone"></span>Áp dụng cho API</div>
+  <h2 class="title">Cùng trạng thái chờ MFA, khác cách biểu diễn</h2>
+  <div class="body g2">
+    <div class="card stack" style="gap:10px">
+      <h3><span data-icon="server"></span>SSR: session</h3>
+<pre class="code"><span class="k">POST</span> /login       <span class="c">// password đúng</span>
+<span class="c">// session có cờ mfaPending</span>
+<span class="k">POST</span> /mfa         <span class="c">// mã đúng</span>
+<span class="c">// sinh sid mới, phiên đầy đủ</span></pre>
+      <p class="small">Phiên chờ là session có cờ riêng; <code>requireLogin</code> chỉ nhận phiên đầy đủ.</p>
+    </div>
+    <div class="card stack" style="gap:10px">
+      <h3><span data-icon="monitor-smartphone"></span>SPA: backend API</h3>
+<pre class="code"><span class="k">POST</span> /api/auth/login
+{ <span class="s">"ok"</span>: true, <span class="s">"data"</span>: {
+    <span class="s">"next"</span>: <span class="s">"mfa"</span>, <span class="s">"challenge"</span>: <span class="s">"c7f..."</span> } }
+<span class="k">POST</span> /api/auth/mfa  { challenge, code }
+{ <span class="s">"ok"</span>: true, <span class="s">"data"</span>: { <span class="s">"accessToken"</span>: <span class="s">"eyJ..."</span> } }</pre>
+      <p class="small">Không có <code>accessToken</code> trước khi qua MFA. <code>challenge</code> ngắn hạn, chỉ <code>/api/auth/mfa</code> nhận; gửi tới <code>/api/books</code> bị từ chối.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Đây là biểu diễn bằng JSON của phiên chờ MFA. API không có session nên backend trả challenge: chuỗi ngẫu nhiên ngắn hạn chỉ dùng cho bước kiểm tra mã. Giá trị c7f... và eyJ... là minh họa.</p>
+    <p>Bài tập của block yêu cầu MFA trên bản SSR; slide này giúp nhóm đọc đúng khi mở rộng sang API. Phân quyền ở API dùng lại bốn cổng; khác ở chỗ danh tính lấy từ token đã verify và kết quả là status 401, 403 thay cho redirect và trang 403.</p>
+  </aside>
+</section>
+
+<!-- ===================== 18. Quiz ===================== -->
+<section class="slide" data-title="Kiểm tra nhanh">
+  <div class="kicker"><span data-icon="list-checks"></span>Kiểm tra nhanh</div>
+  <h2 class="title">Sáu câu hỏi cho cả hai phần</h2>
+  <div class="body g-7-5 quiz" id="quiz">
+    <div class="card stack" style="gap:8px">
+      <div class="row" style="justify-content:space-between"><span class="label" style="margin:0" id="qz-n"></span><div class="qdots" id="qz-dots"></div></div>
+      <p id="qz-q" style="font-size:20px;font-weight:600;margin:0 0 6px"></p>
+      <div id="qz-opts"></div>
+    </div>
+    <div class="stack">
+      <div class="result info" id="qz-out"><span data-icon="play"></span><span>Chọn một đáp án.</span></div>
+      <div class="row"><button class="btn primary" id="qz-next" disabled>Câu tiếp<span data-icon="chevron-right"></span></button><button class="btn" id="qz-reset"><span data-icon="rotate-ccw"></span>Làm lại</button></div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Cho lớp giơ tay chọn trước khi bấm. Mỗi câu ứng với một slide: ẩn nút, bốn cổng, ba nhóm bằng chứng, TOTP, trạng thái chờ MFA, reset password. Câu sai thì quay lại slide tương ứng.</p>
+  </aside>
+</section>
+
+<!-- ===================== 19. Tài liệu ===================== -->
+<section class="slide" data-title="Tài liệu tham khảo">
+  <div class="kicker"><span data-icon="book-open"></span>Đọc thêm</div>
+  <h2 class="title">Tài liệu tham khảo</h2>
+  <div class="body g2">
+    <ul class="refs clean">
+      <li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html">OWASP Authorization Cheat Sheet</a></li>
+      <li><a href="https://csrc.nist.gov/pubs/sp/800/162/upd2/final">NIST SP 800-162: Guide to Attribute Based Access Control</a></li>
+      <li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html">OWASP Multifactor Authentication Cheat Sheet</a></li>
+      <li><a href="https://www.rfc-editor.org/rfc/rfc6238">RFC 6238: TOTP</a></li>
+      <li><a href="https://pages.nist.gov/800-63-4/sp800-63b.html">NIST SP 800-63B: Authentication and Authenticator Management</a></li>
+      <li><a href="https://www.rfc-editor.org/rfc/rfc9110#name-401-unauthorized">RFC 9110: 401 và 403</a></li>
+    </ul>
+    <div class="card" style="align-self:start">
+      <h3><span data-icon="circle-check"></span>Tiếp theo</h3>
+      <p class="small">Bài 2 trong block9-deck: thêm RBAC, ABAC và MFA cho bản SSR của Restaurant App; nghiệm thu bằng request trực tiếp tới server.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Bài 2 áp dụng đúng các cơ chế vừa học cho Restaurant App: bốn cổng với chefId và status của Dish, trạng thái chờ MFA, giới hạn thử, recovery code. Phần mô tả và bảng nghiệm thu nằm ở block9-deck.</p>
+  </aside>
+</section>
+
+</div>
+</div>
+
+<aside class="notes-panel" id="notes-panel"><h4><span data-icon="notebook-pen"></span>Ghi chú giảng</h4><div id="notes-body"></div></aside>
+
+<nav class="nav">
+  <button id="nav-prev" aria-label="Slide trước"><span data-icon="chevron-left"></span></button>
+  <span class="count" id="nav-count">1 / 1</span>
+  <button id="nav-next" aria-label="Slide sau"><span data-icon="chevron-right"></span></button>
+  <span class="ttl" id="nav-title"></span>
+  <div class="progress"><i id="nav-bar"></i></div>
+  <button id="nav-notes"><span data-icon="notebook-pen"></span><span class="lbl">Ghi chú</span></button>
+  <button id="nav-full" aria-label="Toàn màn hình"><span data-icon="maximize"></span></button>
+</nav>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+const ICONS = {
+  "ban": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M4.929 4.929 19.07 19.071\" />",
+  "book-open": "<path d=\"M12 5v16\" /> <path d=\"M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z\" />",
+  "brain": "<path d=\"M12 18V5\" /> <path d=\"M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4\" /> <path d=\"M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294\" /> <path d=\"M17.996 5.125a4 4 0 012.526 5.77\" /> <path d=\"M18 18a4 4 0 002-7.465\" /> <path d=\"M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517\" /> <path d=\"M6 18a4 4 0 01-2-7.465\" /> <path d=\"M6.004 5.125a4 4 0 00-2.526 5.77\" />",
+  "chevron-left": "<path d=\"m15 18-6-6 6-6\" />",
+  "chevron-right": "<path d=\"m9 18 6-6-6-6\" />",
+  "circle-check": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m16 9-5.5 5.5L8 12\" />",
+  "circle-x": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m15 9-6 6\" /> <path d=\"m9 9 6 6\" />",
+  "clock": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 6v6l4 2\" />",
+  "door-open": "<path d=\"M10 21H2\" /> <path d=\"M10 3H7a2 2 0 00-2 2v16\" /> <path d=\"M14 12h.01\" /> <path d=\"M19 21V5a2 2 0 00-1.675-1.974l-6.163-1.013A1 1 0 0010 3v18a1 1 0 001.124.992z\" /> <path d=\"M22 21h-3\" />",
+  "eye": "<path d=\"M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0\" /> <circle cx=\"12\" cy=\"12\" r=\"3\" />",
+  "fingerprint": "<path d=\"M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4\" /> <path d=\"M14 13.12c0 2.38 0 6.38-1 8.88\" /> <path d=\"M17.29 21.02c.12-.6.43-2.3.5-3.02\" /> <path d=\"M2 12a10 10 0 0 1 18-6\" /> <path d=\"M2 16h.01\" /> <path d=\"M21.8 16c.2-2 .131-5.354 0-6\" /> <path d=\"M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2\" /> <path d=\"M8.65 22c.21-.66.45-1.32.57-2\" /> <path d=\"M9 6.8a6 6 0 0 1 9 5.2v2\" />",
+  "fish": "<path d=\"M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6s-7.56-2.53-8.5-6Z\" /> <path d=\"M18 12v.5\" /> <path d=\"M16 17.93a9.77 9.77 0 0 1 0-11.86\" /> <path d=\"M7 10.67C7 8 5.58 5.97 2.73 5.5c-1 1.5-1 5 .23 6.5-1.24 1.5-1.24 5-.23 6.5C5.58 18.03 7 16 7 13.33\" /> <path d=\"M10.46 7.26C10.2 5.88 9.17 4.24 8 3h5.8a2 2 0 0 1 1.98 1.67l.23 1.4\" /> <path d=\"m16.01 17.93-.23 1.4A2 2 0 0 1 13.8 21H9.5a5.96 5.96 0 0 0 1.49-3.98\" />",
+  "globe": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\" /> <path d=\"M2 12h20\" />",
+  "hand": "<path d=\"M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2\" /> <path d=\"M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2\" /> <path d=\"M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8\" /> <path d=\"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15\" />",
+  "id-card": "<path d=\"M13 19a4 4 0 00-8 0\" /> <path d=\"M16 10h2\" /> <path d=\"M16 14h2\" /> <circle cx=\"9\" cy=\"12\" r=\"3\" /> <rect x=\"2\" y=\"5\" width=\"20\" height=\"14\" rx=\"2\" />",
+  "key-round": "<path d=\"M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z\" /> <circle cx=\"16.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\" />",
+  "keyboard": "<path d=\"M10 8h.01\" /> <path d=\"M12 12h.01\" /> <path d=\"M14 8h.01\" /> <path d=\"M16 12h.01\" /> <path d=\"M18 8h.01\" /> <path d=\"M6 8h.01\" /> <path d=\"M7 16h10\" /> <path d=\"M8 12h.01\" /> <rect width=\"20\" height=\"16\" x=\"2\" y=\"4\" rx=\"2\" />",
+  "life-buoy": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m4.93 4.93 4.24 4.24\" /> <path d=\"m14.83 9.17 4.24-4.24\" /> <path d=\"m14.83 14.83 4.24 4.24\" /> <path d=\"m9.17 14.83-4.24 4.24\" /> <circle cx=\"12\" cy=\"12\" r=\"4\" />",
+  "list-checks": "<path d=\"M13 5h8\" /> <path d=\"M13 12h8\" /> <path d=\"M13 19h8\" /> <path d=\"m3 17 2 2 4-4\" /> <path d=\"m3 7 2 2 4-4\" />",
+  "lock-open": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\" /> <path d=\"M7 11V7a5 5 0 0 1 9.9-1\" />",
+  "lock": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\" /> <path d=\"M7 11V7a5 5 0 0 1 10 0v4\" />",
+  "log-in": "<path d=\"m10 17 5-5-5-5\" /> <path d=\"M15 12H3\" /> <path d=\"M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4\" />",
+  "mail": "<path d=\"m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7\" /> <rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\" />",
+  "maximize": "<path d=\"M8 3H5a2 2 0 0 0-2 2v3\" /> <path d=\"M21 8V5a2 2 0 0 0-2-2h-3\" /> <path d=\"M3 16v3a2 2 0 0 0 2 2h3\" /> <path d=\"M16 21h3a2 2 0 0 0 2-2v-3\" />",
+  "monitor-smartphone": "<path d=\"M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8\" /> <path d=\"M10 19v-3.96 3.15\" /> <path d=\"M7 19h5\" /> <rect width=\"6\" height=\"10\" x=\"16\" y=\"12\" rx=\"2\" />",
+  "notebook-pen": "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\" /> <path d=\"M2 6h4\" /> <path d=\"M2 10h4\" /> <path d=\"M2 14h4\" /> <path d=\"M2 18h4\" /> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\" />",
+  "pencil": "<path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\" /> <path d=\"m15 5 4 4\" />",
+  "play": "<path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" />",
+  "plus": "<path d=\"M5 12h14\" /> <path d=\"M12 5v14\" />",
+  "qr-code": "<rect width=\"5\" height=\"5\" x=\"3\" y=\"3\" rx=\"1\" /> <rect width=\"5\" height=\"5\" x=\"16\" y=\"3\" rx=\"1\" /> <rect width=\"5\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\" /> <path d=\"M21 16h-3a2 2 0 0 0-2 2v3\" /> <path d=\"M21 21v.01\" /> <path d=\"M12 7v3a2 2 0 0 1-2 2H7\" /> <path d=\"M3 12h.01\" /> <path d=\"M12 3h.01\" /> <path d=\"M12 16v.01\" /> <path d=\"M16 12h1\" /> <path d=\"M21 12v.01\" /> <path d=\"M12 21v-1\" />",
+  "refresh-cw": "<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\" /> <path d=\"M21 3v5h-5\" /> <path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\" /> <path d=\"M8 16H3v5\" />",
+  "rotate-ccw": "<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" /> <path d=\"M3 3v5h5\" />",
+  "scan-face": "<path d=\"M3 7V5a2 2 0 0 1 2-2h2\" /> <path d=\"M17 3h2a2 2 0 0 1 2 2v2\" /> <path d=\"M21 17v2a2 2 0 0 1-2 2h-2\" /> <path d=\"M7 21H5a2 2 0 0 1-2-2v-2\" /> <path d=\"M8 14s1.5 2 4 2 4-2 4-2\" /> <path d=\"M9 9h.01\" /> <path d=\"M15 9h.01\" />",
+  "send": "<path d=\"M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z\" /> <path d=\"m21.854 2.147-10.94 10.939\" />",
+  "server": "<rect width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\" /> <rect width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\" /> <line x1=\"6\" x2=\"6.01\" y1=\"6\" y2=\"6\" /> <line x1=\"6\" x2=\"6.01\" y1=\"18\" y2=\"18\" />",
+  "shield-alert": "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\" /> <path d=\"M12 8v4\" /> <path d=\"M12 16h.01\" />",
+  "shield-check": "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\" /> <path d=\"m9 12 2 2 4-4\" />",
+  "smartphone": "<rect width=\"14\" height=\"20\" x=\"5\" y=\"2\" rx=\"2\" ry=\"2\" /> <path d=\"M12 18h.01\" />",
+  "timer": "<line x1=\"10\" x2=\"14\" y1=\"2\" y2=\"2\" /> <line x1=\"12\" x2=\"15\" y1=\"14\" y2=\"11\" /> <circle cx=\"12\" cy=\"14\" r=\"8\" />",
+  "trash-2": "<path d=\"M10 11v6\" /> <path d=\"M14 11v6\" /> <path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\" /> <path d=\"M3 6h18\" /> <path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\" />",
+  "triangle-alert": "<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\" /> <path d=\"M12 9v4\" /> <path d=\"M12 17h.01\" />",
+  "user-round": "<circle cx=\"12\" cy=\"8\" r=\"5\" /> <path d=\"M20 21a8 8 0 0 0-16 0\" />",
+  "user-x": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /> <circle cx=\"9\" cy=\"7\" r=\"4\" /> <line x1=\"17\" x2=\"22\" y1=\"8\" y2=\"13\" /> <line x1=\"22\" x2=\"17\" y1=\"8\" y2=\"13\" />",
+  "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\" /> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\" /> <circle cx=\"9\" cy=\"7\" r=\"4\" />"
+};
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+function icon(name, cls = "") {
+  return `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+}
+function hydrateIcons(root = document) {
+  $$("[data-icon]", root).forEach((el) => { el.innerHTML = icon(el.dataset.icon); el.style.display = "inline-flex"; });
+}
+function setResult(el, kind, ic, html) {
+  el.classList.remove("ok", "bad", "warn", "info");
+  el.classList.add("result", kind);
+  el.innerHTML = icon(ic) + `<span>${html}</span>`;
+}
+// Thanh chọn một trong nhiều giá trị
+function seg(el, items, cur, onPick) {
+  el.innerHTML = items.map(([v, t]) => `<button data-v="${v}" class="${v === cur ? "on" : ""}">${t}</button>`).join("");
+  el.onclick = (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    $$("button", el).forEach((x) => x.classList.toggle("on", x === b));
+    onPick(b.dataset.v);
+  };
+}
+
+/* ================= Điều hướng deck ================= */
+const slides = $$(".slide");
+let cur = 0;
+const fluid = matchMedia("(max-width: 760px)");
+function fit() {
+  const st = $("#stage");
+  if (fluid.matches) { st.style.transform = ""; return; }
+  const vw = innerWidth, vh = innerHeight - 56;
+  st.style.transform = `scale(${Math.min(vw / 1160, vh / 652) * 0.97})`;
+}
+function show(i) {
+  cur = Math.max(0, Math.min(slides.length - 1, i));
+  slides.forEach((s, k) => s.classList.toggle("active", k === cur));
+  $("#nav-count").textContent = `${cur + 1} / ${slides.length}`;
+  $("#nav-bar").style.width = `${((cur + 1) / slides.length) * 100}%`;
+  $("#nav-title").textContent = slides[cur].dataset.title || "";
+  const n = $(".notes", slides[cur]);
+  $("#notes-body").innerHTML = n ? n.innerHTML : "<p>Không có ghi chú.</p>";
+  history.replaceState(null, "", "#" + (cur + 1));
+  if (fluid.matches) scrollTo(0, 0);
+}
+function toggleNotes() {
+  const p = $("#notes-panel"); p.classList.toggle("open");
+  $("#nav-notes").classList.toggle("on", p.classList.contains("open"));
+}
+function toggleFull() {
+  if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.();
+}
+$("#nav-prev").onclick = () => show(cur - 1);
+$("#nav-next").onclick = () => show(cur + 1);
+$("#nav-notes").onclick = toggleNotes;
+$("#nav-full").onclick = toggleFull;
+addEventListener("keydown", (e) => {
+  if (e.target.matches("input, textarea, select")) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (["ArrowRight", "PageDown"].includes(e.key) || (e.key === " " && !e.target.matches("button"))) { e.preventDefault(); show(cur + 1); }
+  else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); show(cur - 1); }
+  else if (e.key === "Home") show(0);
+  else if (e.key === "End") show(slides.length - 1);
+  else if (e.key === "n" || e.key === "N") toggleNotes();
+  else if (e.key === "f" || e.key === "F") toggleFull();
+});
+addEventListener("resize", fit);
+fluid.addEventListener("change", fit);
+
+/* ================= Slide 2: phân loại request ================= */
+(function () {
+  const opts = [["auth", "Chưa xác thực"], ["perm", "Thiếu quyền"], ["ok", "Được phép"]];
+  $$("#classify .qrow").forEach((row) => {
+    const box = $(".choices", row);
+    box.innerHTML = opts.map(([v, t]) => `<button class="btn" data-v="${v}">${t}</button>`).join("");
+    box.onclick = (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      const right = b.dataset.v === row.dataset.answer;
+      $$("button", box).forEach((x) => x.classList.remove("good", "wrong"));
+      b.classList.add(right ? "good" : "wrong");
+      row.classList.add("done");
+      setResult($(".fb", row), right ? "ok" : "bad", right ? "circle-check" : "circle-x",
+        (right ? "Đúng. " : "Chưa đúng. ") + row.dataset.fb);
+    };
+  });
+})();
+
+/* ================= Slide 3: RBAC ================= */
+const PERMS = { Viewer: ["read"], Editor: ["read", "create", "update"], Admin: ["read", "create", "update", "delete"] };
+(function () {
+  const ACTS = [["read", "Xem sách", "GET /books/3"], ["create", "Thêm sách", "POST /books"], ["update", "Sửa sách", "PATCH /books/3"], ["delete", "Xóa sách", "DELETE /books/3"]];
+  let role = "Editor", act = "delete";
+  function render() {
+    $("#rbac-table").innerHTML = `<tr><th>Role</th>${ACTS.map((a) => `<th class="c"><code>book:${a[0]}</code></th>`).join("")}</tr>` +
+      Object.keys(PERMS).map((r) => `<tr class="${r === role ? "sel" : ""}"><td><b>${r}</b></td>${ACTS.map((a) =>
+        `<td class="c">${PERMS[r].includes(a[0]) ? icon("circle-check", "yes") : icon("circle-x", "no")}</td>`).join("")}</tr>`).join("") +
+      `<tr><td colspan="5" class="tiny muted">Bảng quyền <span class="tag-mh">MINH HỌA</span></td></tr>`;
+    const a = ACTS.find((x) => x[0] === act);
+    const ok = PERMS[role].includes(act);
+    setResult($("#rbac-out"), ok ? "ok" : "bad", ok ? "circle-check" : "ban",
+      `${role} gửi <code>${a[2]}</code>: bảng quyền của ${role} ${ok ? "có" : "không có"} <code>book:${act}</code>. ` +
+      (ok ? "Cho phép, request đi tiếp tới handler." : "Từ chối: trang 403."));
+  }
+  seg($('#rbac [data-k="role"]'), Object.keys(PERMS).map((r) => [r, r]), role, (v) => { role = v; render(); });
+  seg($('#rbac [data-k="act"]'), ACTS.map((a) => [a[0], a[1]]), act, (v) => { act = v; render(); });
+  render();
+})();
+
+/* ================= Dữ liệu sách dùng chung ================= */
+const BOOKS = { 3: { title: "Dune", managerId: 7, status: "draft" }, 4: { title: "Emma", managerId: 8, status: "draft" }, 5: { title: "Ulysses", managerId: 7, status: "published" } };
+
+/* ================= Slide 4: giới hạn RBAC ================= */
+(function () {
+  let who = 8, mode = "rbac";
+  function render() {
+    $("#limit-books").innerHTML = Object.entries(BOOKS).map(([id, b]) => {
+      let ok = true, why = "Role Editor có <code>book:update</code>.";
+      if (mode === "abac") {
+        if (b.managerId !== who) { ok = false; why = `Sách do user ${b.managerId} phụ trách, không phải user ${who}.`; }
+        else if (b.status !== "draft") { ok = false; why = "Sách đã <code>published</code>."; }
+        else why = "Đúng người phụ trách, sách còn <code>draft</code>.";
+      }
+      return `<div class="book ${ok ? "allow" : "deny"}">
+        <div class="bt">${icon("book-open")}#${id} ${b.title}</div>
+        <div class="meta">managerId: <b>${b.managerId}</b> &nbsp; status: <span class="pill-st">${b.status}</span></div>
+        <div class="verdict">${icon(ok ? "circle-check" : "ban")}<div>${ok ? "Sửa được" : "Trang 403"}<div class="why">${why}</div></div></div></div>`;
+    }).join("");
+    const out = $("#limit-out");
+    if (mode === "rbac") setResult(out, "warn", "triangle-alert", `Chỉ xét role: Editor ${who} sửa được cả ba cuốn, kể cả sách của người khác và sách đã published. Không đạt yêu cầu nghiệp vụ.`);
+    else setResult(out, "ok", "circle-check", `Xét thêm <code>managerId</code> và <code>status</code> của từng cuốn: Editor ${who} chỉ sửa được sách mình phụ trách đang <code>draft</code>.`);
+  }
+  seg($('#limit [data-k="who"]'), [["7", "Editor 7"], ["8", "Editor 8"]], "8", (v) => { who = +v; render(); });
+  seg($('#limit [data-k="mode"]'), [["rbac", "Chỉ RBAC"], ["abac", "RBAC và điều kiện trên sách"]], "rbac", (v) => { mode = v; render(); });
+  render();
+})();
+
+/* ================= Slide 5: ABAC tô sáng ================= */
+(function () {
+  const cards = $$("#abac .attr");
+  cards.forEach((c) => c.onclick = () => {
+    const on = !c.classList.contains("on");
+    cards.forEach((x) => x.classList.remove("on"));
+    $$("#abac pre [data-g]").forEach((s) => s.classList.remove("hl"));
+    if (on) { c.classList.add("on"); $$(`#abac pre [data-g="${c.dataset.g}"]`).forEach((s) => s.classList.add("hl")); }
+  });
+})();
+
+/* ================= Slide 6: bốn cổng ================= */
+(function () {
+  const CALLERS = { guest: null, v9: { id: 9, role: "Viewer" }, e7: { id: 7, role: "Editor" }, e8: { id: 8, role: "Editor" }, a1: { id: 1, role: "Admin" } };
+  const GATES = [
+    ["Cổng 1", "user-round", "Có phiên đăng nhập?", "Nguồn: session"],
+    ["Cổng 2", "users", "Role có book:update?", "RBAC, bảng quyền"],
+    ["Cổng 3", "book-open", "Sách tồn tại?", "Nguồn: database"],
+    ["Cổng 4", "shield-check", "Thuộc tính thỏa quy tắc?", "ABAC"],
+    ["Handler", "pencil", "Ghi thay đổi", "Chỉ chạy khi qua đủ 4 cổng"],
+  ];
+  let caller = "e7", book = "3", token = 0;
+  const row = $("#gates-row");
+  function drawIdle() {
+    row.innerHTML = GATES.map((g, i) => `<div class="gate ${i === 4 ? "end" : ""}"><div class="gn">${icon(g[1])}${g[0]}</div><div class="gq">${g[2]}</div><div class="gf">${g[3]}</div><div class="gs"></div></div>`).join("");
+    $("#gates-req").textContent = `PATCH /books/${book}`;
+  }
+  function evaluate() {
+    const u = CALLERS[caller], b = BOOKS[book];
+    const r = [];
+    if (!u) return { steps: [[false, "Không có session"]], final: ["bad", "log-in", "Dừng ở cổng 1: chưa biết người gọi. Server trả <code>303</code> tới <code>/login</code>."] };
+    r.push([true, `${u.role} ${u.id}`]);
+    if (!PERMS[u.role].includes("update")) { r.push([false, "Không có quyền"]); return { steps: r, final: ["bad", "ban", `Dừng ở cổng 2: ${u.role} không có <code>book:update</code>. Trang <code>403</code>; server chưa cần đọc sách.`] }; }
+    r.push([true, "Có book:update"]);
+    if (!b) { r.push([false, "Không có sách"]); return { steps: r, final: ["warn", "circle-x", `Dừng ở cổng 3: không có sách ${book}. Trang <code>404</code> như Block 5.`] }; }
+    r.push([true, `managerId ${b.managerId}, ${b.status}`]);
+    if (u.role !== "Admin") {
+      if (b.managerId !== u.id) { r.push([false, "Không phụ trách"]); return { steps: r, final: ["bad", "ban", `Dừng ở cổng 4: sách ${book} do user ${b.managerId} phụ trách, người gọi là user ${u.id}. Trang <code>403</code>.`] }; }
+      if (b.status !== "draft") { r.push([false, "Đã published"]); return { steps: r, final: ["bad", "ban", `Dừng ở cổng 4: Editor ${u.id} phụ trách sách ${book} nhưng sách đã <code>published</code>. Trang <code>403</code>.`] }; }
+      r.push([true, "Đúng chủ, còn draft"]);
+    } else r.push([true, "Admin được phép"]);
+    r.push([true, "Đã ghi"]);
+    return { steps: r, final: ["ok", "circle-check", `Qua đủ bốn cổng. Handler ghi thay đổi rồi redirect <code>303</code> về <code>/books/${book}</code>.`] };
+  }
+  function run() {
+    const my = ++token; drawIdle();
+    const { steps, final } = evaluate(), gates = $$(".gate", row);
+    setResult($("#gates-out"), "info", "timer", "Server đang kiểm tra...");
+    steps.forEach(([pass, txt], i) => {
+      setTimeout(() => { if (my === token) { gates[i].classList.add("run"); } }, i * 520);
+      setTimeout(() => {
+        if (my !== token) return;
+        gates[i].classList.remove("run"); gates[i].classList.add(pass ? "pass" : "fail");
+        $(".gs", gates[i]).innerHTML = (pass ? icon("circle-check") : icon("circle-x")) + " " + txt;
+        if (i === steps.length - 1) {
+          gates.slice(steps.length).forEach((g) => g.classList.add("skip"));
+          setResult($("#gates-out"), ...final);
+        }
+      }, i * 520 + 380);
+    });
+  }
+  seg($('#gates [data-k="caller"]'), [["guest", "Chưa đăng nhập"], ["v9", "Viewer 9"], ["e7", "Editor 7"], ["e8", "Editor 8"], ["a1", "Admin 1"]], caller, (v) => { caller = v; token++; drawIdle(); });
+  seg($('#gates [data-k="book"]'), [["3", "#3 Dune: 7, draft"], ["4", "#4 Emma: 8, draft"], ["5", "#5 Ulysses: 7, published"], ["99", "#99: không có"]], book, (v) => { book = v; token++; drawIdle(); });
+  $("#gates-run").onclick = run;
+  drawIdle();
+})();
+
+/* ================= Slide 7: ẩn nút ================= */
+(function () {
+  let deleted = false;
+  function list() {
+    $("#hidden-list").innerHTML = Object.entries(BOOKS).map(([id, b]) =>
+      `<li class="${deleted && id === "3" ? "gone" : ""}">${icon("book-open")}<span class="sp">#${id} ${b.title}</span><span class="btn" style="padding:3px 9px;font-size:13px">${icon("eye")}Xem</span></li>`).join("");
+  }
+  $("#hidden-send").onclick = () => {
+    const guard = $("#hidden-guard").checked, out = $("#hidden-out");
+    if (guard) setResult(out, "ok", "shield-check", "<b>403 Forbidden.</b> Server đọc role Viewer từ session, Viewer không có <code>book:delete</code>. Dữ liệu không đổi.");
+    else {
+      deleted = true; list();
+      setResult(out, "bad", "triangle-alert", "<b>200, sách 3 đã bị xóa.</b> Giao diện không có nút Xóa, nhưng route không kiểm tra quyền nên request trực tiếp vẫn chạy.");
+    }
+  };
+  $("#hidden-reset").onclick = () => { deleted = false; list(); setResult($("#hidden-out"), "info", "rotate-ccw", "Đã khôi phục sách 3."); };
+  list();
+})();
+
+/* ================= Slide 9: password bị lộ ================= */
+(function () {
+  let token = 0;
+  $("#leak-run").onclick = () => {
+    const my = ++token, mfa = $("#leak-mfa").checked;
+    const steps = [
+      ["ok", "key-round", "<b>Bước 1, password:</b> email và password đúng. Server xác nhận nhóm Biết."],
+      mfa ? ["bad", "smartphone", "<b>Bước 2, mã 6 số:</b> server hỏi mã từ ứng dụng authenticator. Mã nằm trên điện thoại của chủ tài khoản; kẻ tấn công không có."]
+          : ["bad", "door-open", "<b>Không có bước 2:</b> server tạo phiên đầy đủ ngay sau password."],
+      mfa ? ["ok", "shield-check", "<b>Kết quả:</b> không có phiên đầy đủ. Kẻ tấn công dừng ở trạng thái chờ MFA."]
+          : ["bad", "user-x", "<b>Kết quả:</b> kẻ tấn công vào được tài khoản Editor và sửa được sách."],
+    ];
+    $("#leak-flow").innerHTML = steps.map(([k, ic, t]) => `<div class="fstep ${k}">${icon(ic)}<div>${t}</div></div>`).join("");
+    $$("#leak-flow .fstep").forEach((el, i) => setTimeout(() => { if (my === token) el.classList.add("show"); }, 250 + i * 650));
+  };
+  $("#leak-flow").innerHTML = `<div class="fstep show">${icon("play")}<div>Tắt MFA rồi bấm Kẻ tấn công đăng nhập; sau đó bật MFA và chạy lại.</div></div>`;
+})();
+
+/* ================= Slide 10: ba nhóm bằng chứng ================= */
+(function () {
+  const ITEMS = [["pw", "Password", "know", "key-round"], ["pin", "PIN", "know", "keyboard"], ["sq", "Câu hỏi bảo mật", "know", "brain"],
+    ["totp", "Mã từ ứng dụng authenticator", "have", "smartphone"], ["usb", "Khóa bảo mật USB", "have", "key-round"],
+    ["fp", "Vân tay", "are", "fingerprint"], ["face", "Khuôn mặt", "are", "scan-face"]];
+  const NAME = { know: "Biết", have: "Có", are: "Là" };
+  let sel = [];
+  function render() {
+    $("#factors-pool").innerHTML = ITEMS.filter((it) => !sel.includes(it[0])).map((it) => `<button class="chip" data-id="${it[0]}">${icon(it[3])}${it[1]}</button>`).join("");
+    $$("#factors .bin").forEach((b) => {
+      const inBin = ITEMS.filter((it) => sel.includes(it[0]) && it[2] === b.dataset.bin);
+      $(".chips", b).innerHTML = inBin.map((it) => `<button class="chip on" data-id="${it[0]}">${icon(it[3])}${it[1]}</button>`).join("");
+      b.classList.toggle("hit", inBin.length > 0);
+    });
+    const out = $("#factors-out"), picked = sel.map((id) => ITEMS.find((i) => i[0] === id));
+    if (picked.length === 0) setResult(out, "info", "play", "Chưa chọn bằng chứng nào. Bấm hai mục bên trên; bấm lại mục đã chọn để bỏ.");
+    else if (picked.length === 1) setResult(out, "info", "hand", `${picked[0][1]} thuộc nhóm ${NAME[picked[0][2]]}. Chọn thêm một bằng chứng.`);
+    else if (picked[0][2] === picked[1][2]) setResult(out, "bad", "circle-x", `${picked[0][1]} và ${picked[1][1]} cùng nhóm ${NAME[picked[0][2]]}: chưa phải MFA. Cách lấy được bằng chứng thứ nhất thường lấy được cả bằng chứng thứ hai.`);
+    else setResult(out, "ok", "circle-check", `${picked[0][1]} (${NAME[picked[0][2]]}) và ${picked[1][1]} (${NAME[picked[1][2]]}): hai nhóm khác nhau, là MFA.`);
+  }
+  $("#factors").addEventListener("click", (e) => {
+    const c = e.target.closest(".chip"); if (!c) return;
+    const id = c.dataset.id;
+    if (sel.includes(id)) sel = sel.filter((x) => x !== id);
+    else { if (sel.length === 2) sel.shift(); sel.push(id); }
+    render();
+  });
+  render();
+})();
+
+/* ================= TOTP theo RFC 6238 (HMAC-SHA1) ================= */
+function sha1(bytes) {
+  const ml = bytes.length, withPad = ((ml + 9 + 63) >> 6) << 6, m = new Uint8Array(withPad);
+  m.set(bytes); m[ml] = 0x80;
+  const dv = new DataView(m.buffer);
+  dv.setUint32(withPad - 4, (ml * 8) >>> 0); dv.setUint32(withPad - 8, Math.floor((ml * 8) / 2 ** 32));
+  let h0 = 0x67452301, h1 = 0xefcdab89, h2 = 0x98badcfe, h3 = 0x10325476, h4 = 0xc3d2e1f0;
+  const w = new Uint32Array(80), rotl = (x, n) => (x << n) | (x >>> (32 - n));
+  for (let o = 0; o < withPad; o += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+    for (let i = 16; i < 80; i++) w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    let a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (let i = 0; i < 80; i++) {
+      const f = i < 20 ? (b & c) | (~b & d) : i < 40 ? b ^ c ^ d : i < 60 ? (b & c) | (b & d) | (c & d) : b ^ c ^ d;
+      const k = i < 20 ? 0x5a827999 : i < 40 ? 0x6ed9eba1 : i < 60 ? 0x8f1bbcdc : 0xca62c1d6;
+      const t = (rotl(a, 5) + f + e + k + w[i]) >>> 0;
+      e = d; d = c; c = rotl(b, 30) >>> 0; b = a; a = t;
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0; h4 = (h4 + e) >>> 0;
+  }
+  const out = new Uint8Array(20), ov = new DataView(out.buffer);
+  [h0, h1, h2, h3, h4].forEach((h, i) => ov.setUint32(i * 4, h));
+  return out;
+}
+function hmacSha1(key, msg) {
+  if (key.length > 64) key = sha1(key);
+  const k = new Uint8Array(64); k.set(key);
+  const ipad = new Uint8Array(64 + msg.length), opad = new Uint8Array(64 + 20);
+  for (let i = 0; i < 64; i++) { ipad[i] = k[i] ^ 0x36; opad[i] = k[i] ^ 0x5c; }
+  ipad.set(msg, 64); opad.set(sha1(ipad), 64);
+  return sha1(opad);
+}
+function base32(s) {
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; let bits = 0, val = 0; const out = [];
+  for (const ch of s.replace(/[\s=]/g, "").toUpperCase()) { val = (val << 5) | A.indexOf(ch); bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  return new Uint8Array(out);
+}
+function totpAt(key, step) {
+  const msg = new Uint8Array(8), dv = new DataView(msg.buffer);
+  dv.setUint32(0, Math.floor(step / 2 ** 32)); dv.setUint32(4, step >>> 0);
+  const h = hmacSha1(key, msg), o = h[19] & 15;
+  const bin = ((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return String(bin % 1e6).padStart(6, "0");
+}
+const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, "0")).join("");
+const fmt6 = (c) => c.slice(0, 3) + " " + c.slice(3);
+
+/* ================= Slide 11: TOTP trực tiếp ================= */
+(function () {
+  const KEY = base32("JBSWY3DPEHPK3PXP"), OTHER = base32("KRSXG5CTMVRXEZLU");
+  function tick() {
+    if (!slides[cur] || slides[cur].dataset.title !== "TOTP") return;
+    const drift = +$("#t-drift").value, wrong = $("#t-wrong").checked;
+    const t = Math.floor(Date.now() / 1000), step = Math.floor(t / 30);
+    const pt = t + drift, pstep = Math.floor(pt / 30);
+    const pcode = totpAt(wrong ? OTHER : KEY, pstep);
+    $("#t-phone").textContent = fmt6(pcode);
+    const left = 30 - (pt % 30);
+    $("#t-bar").style.width = (left / 30) * 100 + "%";
+    $("#t-left").textContent = `còn ${left} giây`;
+    $("#t-pclock").textContent = drift ? `Đồng hồ điện thoại: t ${drift > 0 ? "+" : ""}${drift} giây` : "Đồng hồ điện thoại khớp server";
+    $("#t-drift-v").textContent = `${drift > 0 ? "+" : ""}${drift} giây`;
+    $("#t-secret").textContent = wrong ? "KRSX G5CT MVRX EZLU" : "JBSW Y3DP EHPK 3PXP";
+    $("#t-t").textContent = t; $("#t-step").textContent = `${t} / 30 = ${step}`;
+    let match = null;
+    $("#t-codes").innerHTML = [-1, 0, 1].map((d) => {
+      const c = totpAt(KEY, step + d); if (c === pcode) match = d;
+      return `<div class="${c === pcode ? "match" : ""}"><span>bước ${d === 0 ? "hiện tại" : d < 0 ? "trước" : "sau"}</span><span>${fmt6(c)}</span></div>`;
+    }).join("");
+    const out = $("#t-out");
+    if (wrong) setResult(out, "bad", "circle-x", "Từ chối. Không có secret đúng thì HMAC cho kết quả khác; biết thời gian vẫn không tính được mã.");
+    else if (match === 0) setResult(out, "ok", "circle-check", "Chấp nhận: mã trên điện thoại khớp bước hiện tại của server.");
+    else if (match !== null) setResult(out, "warn", "circle-check", `Chấp nhận: đồng hồ lệch, mã khớp bước ${match < 0 ? "trước" : "sau"}. Server cho phép một bước lân cận.`);
+    else setResult(out, "bad", "circle-x", "Từ chối: đồng hồ lệch quá một bước 30 giây, mã không khớp bước nào server chấp nhận.");
+  }
+  $("#t-drift").oninput = tick; $("#t-wrong").onchange = tick;
+  setInterval(tick, 250);
+  window.__totpTick = tick;
+})();
+
+/* ================= Slide 12: thiết lập ================= */
+(function () {
+  const S = [
+    ["Tạo secret", "key-round", "Server sinh secret ngẫu nhiên cho user và lưu ở dạng mã hóa. Cờ <code>mfaEnabled = false</code>: đăng nhập chưa yêu cầu mã.",
+      { "secret": "đã có, mã hóa", "mfaEnabled": "false", "recovery code": "chưa có" }, { "secret": "chưa có" }],
+    ["Chia sẻ qua mã QR", "qr-code", "Trang hiện mã QR chứa URI cho ứng dụng authenticator, kèm chuỗi secret để nhập tay:<pre class='code' style='margin-top:8px;font-size:13.5px'>otpauth://totp/Books:editor7?secret=JBSWY3DPEHPK3PXP&amp;issuer=Books</pre>",
+      { "secret": "đã có, mã hóa", "mfaEnabled": "false", "recovery code": "chưa có" }, { "secret": "đã quét, bắt đầu sinh mã" }],
+    ["Xác nhận bằng một mã", "smartphone", "User nhập mã 6 số đang hiện trên app. Server tính lại và so. Mã sai thì chưa bật MFA, tránh khóa user khi quét nhầm hoặc đồng hồ lệch.",
+      { "secret": "đã có, mã hóa", "mfaEnabled": "false, chờ mã đúng", "recovery code": "chưa có" }, { "secret": "có", "mã hiện tại": "user đọc và nhập" }],
+    ["Bật MFA, phát recovery code", "shield-check", "Mã đúng: server đặt <code>mfaEnabled = true</code> và hiện nhóm recovery code một lần. Từ lần đăng nhập sau, server hỏi mã sau bước password.",
+      { "secret": "đã có, mã hóa", "mfaEnabled": "true", "recovery code": "hash và usedAt" }, { "secret": "có", "recovery code": "user tự lưu" }],
+  ];
+  let i = 0;
+  const kv = (o) => Object.entries(o).map(([k, v]) => `<span class="k">${k}</span><span>${v}</span>`).join("");
+  function render() {
+    $("#setup-steps").innerHTML = S.map((s, k) => `<button class="stepbtn ${k === i ? "on" : k < i ? "past" : ""}" data-k="${k}"><span class="n">${k < i ? icon("circle-check") : k + 1}</span>${s[0]}</button>`).join("") +
+      `<div class="row" style="margin-top:6px"><button class="btn" id="setup-prev">${icon("chevron-left")}Bước trước</button><button class="btn primary" id="setup-next">Bước tiếp${icon("chevron-right")}</button></div>` +
+      `<p class="small muted" style="margin:6px 0 0">Secret không băm một chiều như password: server cần giá trị gốc để tính mã.</p>`;
+    $("#setup-detail").innerHTML = `<h3>${icon(S[i][1])}Bước ${i + 1}: ${S[i][0]}</h3><p>${S[i][2]}</p>`;
+    $("#setup-server").innerHTML = kv(S[i][3]); $("#setup-phone").innerHTML = kv(S[i][4]);
+    $("#setup-prev").disabled = i === 0; $("#setup-next").disabled = i === S.length - 1;
+  }
+  $("#setup").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.k) i = +b.dataset.k; else if (b.id === "setup-prev") i--; else if (b.id === "setup-next") i++; else return;
+    render();
+  });
+  render();
+})();
+
+/* ================= Slide 13: máy trạng thái ================= */
+(function () {
+  const MAX = 5;
+  let st = "none", fails = 0, sid = 1;
+  const log = $("#sm-log");
+  function paint(edge) {
+    $$("#sm .st").forEach((g) => g.classList.toggle("cur", g.dataset.st === st));
+    $$("#sm path.e").forEach((p) => p.classList.remove("flash"));
+    if (edge) { const p = $("#" + edge); p.classList.add("flash"); setTimeout(() => p.classList.remove("flash"), 900); }
+  }
+  function add(req, cls, res) {
+    log.insertAdjacentHTML("beforeend", `<div>${req}<br><span class="${cls}">${res}</span></div>`);
+    log.scrollTop = log.scrollHeight;
+  }
+  function ev(e) {
+    let edge = null;
+    if (e === "reset") { st = "none"; fails = 0; log.innerHTML = ""; add("Làm lại", "r-warn", "Trạng thái: chưa đăng nhập"); paint(); return; }
+    if (e === "login") {
+      if (st === "lock") add("POST /login", "r-bad", "Từ chối: tài khoản đang khóa tạm");
+      else { st = "pending"; fails = 0; edge = "e-login"; add("POST /login (password đúng)", "r-warn", `Session sid=s${sid} có cờ mfaPending; chuyển tới trang nhập mã`); }
+    } else if (e === "wrong") {
+      if (st === "pending") {
+        fails++;
+        if (fails >= MAX) { st = "lock"; edge = "e-lock"; add("POST /mfa (mã sai)", "r-bad", `Sai lần ${fails}/${MAX}: khóa tạm, không nhận mã nữa`); }
+        else { edge = "e-wrong"; add("POST /mfa (mã sai)", "r-bad", `Sai lần ${fails}/${MAX}: vẫn chờ MFA`); }
+      } else if (st === "lock") add("POST /mfa (mã sai)", "r-bad", "Từ chối: đang khóa tạm");
+      else add("POST /mfa", "r-bad", st === "full" ? "Không cần: phiên đã đầy đủ" : "Từ chối: chưa có phiên chờ MFA; 303 tới /login");
+    } else if (e === "ok") {
+      if (st === "pending") { const old = sid++; st = "full"; edge = "e-ok"; add("POST /mfa (mã đúng)", "r-ok", `Hủy sid=s${old}, cấp sid=s${sid} cho phiên đầy đủ`); }
+      else if (st === "lock") add("POST /mfa (mã đúng)", "r-bad", "Từ chối: đang khóa tạm, kể cả mã đúng");
+      else add("POST /mfa", "r-bad", st === "full" ? "Không cần: phiên đã đầy đủ" : "Từ chối: chưa có phiên chờ MFA; 303 tới /login");
+    } else if (e === "admin") {
+      if (st === "full") add("GET /admin", "r-ok", "Qua cổng 1; đi tiếp tới cổng phân quyền");
+      else if (st === "pending") add("GET /admin", "r-bad", "Bị chặn: phiên chờ MFA chưa qua được cổng 1; 303 tới /login");
+      else add("GET /admin", "r-bad", st === "lock" ? "Bị chặn: không có phiên đầy đủ" : "Bị chặn: chưa đăng nhập; 303 tới /login");
+    }
+    paint(edge);
+  }
+  $$("#sm [data-ev]").forEach((b) => b.onclick = () => ev(b.dataset.ev));
+  ev("reset");
+})();
+
+/* ================= Slide 14: giới hạn số lần thử ================= */
+(function () {
+  const N = [5, 10, 100, 1000, 10000, 100000, Infinity];
+  function render() {
+    const n = N[+$("#b-n").value];
+    $("#b-n-v").textContent = n === Infinity ? "không giới hạn" : n.toLocaleString("vi-VN") + " lần";
+    const out = $("#b-out");
+    if (n === Infinity) { setResult(out, "bad", "triangle-alert", "Không giới hạn: kẻ có password thử đủ mã thì chắc chắn trúng."); return; }
+    const p = Math.min(1, (n * 3) / 1e6) * 100;
+    const ps = p < 0.01 ? p.toLocaleString("vi-VN", { maximumSignificantDigits: 2 }) : p.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+    setResult(out, p < 0.1 ? "ok" : p < 5 ? "warn" : "bad", p < 0.1 ? "shield-check" : "triangle-alert", `Xác suất đoán trúng trước khi bị khóa: khoảng <b>${ps}%</b>.`);
+  }
+  $("#b-n").oninput = render; render();
+})();
+
+/* ================= Slide 15: recovery code ================= */
+(function () {
+  const ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const enc = new TextEncoder();
+  const gen = () => Array.from({ length: 6 }, () => { let s = ""; for (let i = 0; i < 8; i++) { s += ALPHA[Math.floor(Math.random() * ALPHA.length)]; if (i === 3) s += "-"; } return s; });
+  let groups = [{ codes: ["7KQ2-M9XD", "P4TZ-8HWN", "J6RC-2VLB", "X3MF-Q7YA", "D9GS-5KEU", "H2NB-W8PR"], used: {}, active: true }];
+  const now = () => new Date().toLocaleTimeString("vi-VN", { hour12: false });
+  function render() {
+    const all = groups.flatMap((g, gi) => g.codes.map((c) => ({ c, g, gi })));
+    const shown = [...groups.filter((g) => g.active), ...groups.filter((g) => !g.active).slice(-1)];
+    $("#rec-codes").innerHTML = shown.flatMap((g) => g.codes.map((c) =>
+      `<button class="rcode ${g.used[c] ? "used" : ""} ${g.active ? "" : "old"}" data-c="${c}"><span>${c}</span>${icon(g.used[c] ? "ban" : g.active ? "key-round" : "circle-x")}</button>`)).join("");
+    const act = groups.find((g) => g.active);
+    $("#rec-table").innerHTML = `<tr><th>hash (rút gọn)</th><th>usedAt</th></tr>` +
+      act.codes.map((c) => `<tr><td class="mono tiny">${hex(sha1(enc.encode(c))).slice(0, 16)}…</td><td class="tiny">${act.used[c] || "null"}</td></tr>`).join("");
+  }
+  $("#rec-codes").onclick = (e) => {
+    const b = e.target.closest(".rcode"); if (!b) return;
+    const c = b.dataset.c, g = groups.find((x) => x.codes.includes(c)), out = $("#rec-out");
+    if (!g.active) setResult(out, "bad", "circle-x", `<code>${c}</code>: từ chối. Mã thuộc nhóm cũ, đã vô hiệu khi sinh nhóm mới.`);
+    else if (g.used[c]) setResult(out, "bad", "ban", `<code>${c}</code>: từ chối. Hash khớp nhưng <code>usedAt</code> đã có giá trị.`);
+    else { g.used[c] = now(); setResult(out, "ok", "circle-check", `<code>${c}</code>: chấp nhận thay cho mã TOTP. Server ghi <code>usedAt</code>; nên thiết lập lại thiết bị.`); }
+    render();
+  };
+  $("#rec-new").onclick = () => {
+    groups.forEach((g) => g.active = false);
+    groups.push({ codes: gen(), used: {}, active: true });
+    setResult($("#rec-out"), "warn", "refresh-cw", "Đã sinh nhóm mới; server xóa hash của nhóm cũ. Thử bấm một mã cũ (viền nét đứt).");
+    render();
+  };
+  render();
+})();
+
+/* ================= Slide 16: phishing ================= */
+(function () {
+  const T = [
+    "Bấm Bước tiếp để chạy kịch bản.",
+    "<b>Bước 1:</b> người dùng mở link trong email giả, thấy trang giống trang thật và nhập password vào <code>books-login.example</code>.",
+    "<b>Bước 2:</b> trang giả gửi ngay password tới trang thật. Trang thật hỏi mã TOTP; trang giả hiện ô nhập mã giống hệt.",
+    "<b>Bước 3:</b> người dùng nhập mã đang hiện trên điện thoại. Trang giả chuyển mã tới trang thật khi bước 30 giây chưa kết thúc.",
+    "<b>Bước 4:</b> mã hợp lệ nên trang thật cấp cookie phiên. Cookie này về tay kẻ tấn công, kèm phiên đầy đủ.",
+  ];
+  let s = 0;
+  function render() {
+    $$("#phish .ar").forEach((g) => { const k = +g.dataset.s; g.classList.toggle("now", k === s); g.classList.toggle("past", k < s); });
+    setResult($("#ph-out"), s === 4 ? "bad" : "info", s === 4 ? "triangle-alert" : "play", T[s]);
+    $("#ph-prev").disabled = s === 0; $("#ph-next").disabled = s === 4;
+  }
+  $("#ph-prev").onclick = () => { s--; render(); };
+  $("#ph-next").onclick = () => { s++; render(); };
+  render();
+})();
+
+/* ================= Slide 18: quiz ================= */
+(function () {
+  const Q = [
+    ["Template đã ẩn nút Xóa với Viewer. Route DELETE ở server có cần kiểm tra quyền?", ["Không, Viewer không thấy nút", "Có, request vẫn gửi được trực tiếp bằng công cụ HTTP"], 1,
+      "Giao diện chỉ quyết định thứ được hiển thị; server mới chặn được request."],
+    ["Editor 7 gửi PATCH /books/4. Sách 4 có managerId 8, status draft. Kết quả theo quy tắc ví dụ?", ["Cho phép", "Trang 403", "Trang 404"], 1,
+      "Qua cổng 2 (Editor có book:update), sách tồn tại, nhưng cổng 4 chặn vì user 7 không phụ trách sách 4."],
+    ["Đăng nhập bằng password rồi nhập thêm PIN có phải MFA?", ["Có, hai bằng chứng", "Không, cả hai cùng nhóm Biết"], 1,
+      "MFA yêu cầu hai nhóm khác nhau. Password và PIN đều là thứ người dùng ghi nhớ."],
+    ["Mỗi lần sinh mã TOTP, điện thoại và server trao đổi gì?", ["Server gửi mã qua SMS", "Không trao đổi; hai bên tự tính từ secret chung và thời gian", "Điện thoại gửi secret lên server"], 1,
+      "Secret chỉ chép sang điện thoại một lần lúc thiết lập; sau đó mỗi bên tự tính HMAC từ secret và số bước 30 giây."],
+    ["Password đúng, user chưa nhập mã nhưng gõ thẳng /admin. Server làm gì?", ["Cho vào, vì password đã đúng", "Chặn: phiên chờ MFA chỉ dùng được ở route nhập mã"], 1,
+      "Phiên chờ MFA không qua được cổng 1; chỉ phiên đầy đủ mới tới bước phân quyền."],
+    ["User quên password và đặt lại thành công. Lần đăng nhập sau có cần mã TOTP?", ["Không, reset đã xác minh qua email", "Có, reset password không tắt MFA"], 1,
+      "Reset chỉ chứng minh đọc được hộp thư; nếu reset tắt MFA thì kẻ chiếm email sẽ bỏ qua được yếu tố thứ hai."],
+  ];
+  let i = 0, res = [];
+  function render() {
+    const [q, opts] = Q[i];
+    $("#qz-n").textContent = `Câu ${i + 1} / ${Q.length}`;
+    $("#qz-q").textContent = q;
+    $("#qz-opts").innerHTML = opts.map((o, k) => `<button class="btn opt" data-k="${k}">${o}</button>`).join("");
+    $("#qz-dots").innerHTML = Q.map((_, k) => `<i class="${res[k] === true ? "r" : res[k] === false ? "w" : k === i ? "cur" : ""}"></i>`).join("");
+    $("#qz-next").disabled = true;
+    if (res[i] === undefined) setResult($("#qz-out"), "info", "play", "Chọn một đáp án.");
+  }
+  $("#qz-opts").onclick = (e) => {
+    const b = e.target.closest(".opt"); if (!b || res[i] !== undefined) return;
+    const k = +b.dataset.k, right = k === Q[i][2];
+    res[i] = right;
+    $$("#qz-opts .opt").forEach((x) => { if (+x.dataset.k === Q[i][2]) x.classList.add("good"); else if (x === b) x.classList.add("wrong"); x.disabled = true; });
+    const last = i === Q.length - 1, score = res.filter(Boolean).length;
+    setResult($("#qz-out"), right ? "ok" : "bad", right ? "circle-check" : "circle-x", (right ? "Đúng. " : "Chưa đúng. ") + Q[i][3] + (last ? `<br><b>Kết quả: ${score} / ${Q.length} câu đúng.</b>` : ""));
+    $("#qz-dots").innerHTML = Q.map((_, k) => `<i class="${res[k] === true ? "r" : res[k] === false ? "w" : k === i ? "cur" : ""}"></i>`).join("");
+    $("#qz-next").disabled = last;
+  };
+  $("#qz-next").onclick = () => { i++; render(); };
+  $("#qz-reset").onclick = () => { i = 0; res = []; render(); };
+  render();
+})();
+
+hydrateIcons();
+fit();
+show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>

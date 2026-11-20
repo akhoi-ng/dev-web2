@@ -31,6 +31,8 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^7.0.13",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4",
     "resend": "^6.38.0",
     "validator": "^13.15.35"
   },

@@ -1,5 +1,7 @@
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { dishesApi, getOptions } from "../../../api/index.js";
+import { adminDishesApi, getOptions } from "../../../api/index.js";
+import { useAuth } from "../../../auth/AuthContext.jsx";
+import DishStatusBadge, { canCreateDishUi } from "./DishStatusBadge.jsx";
 import DataStatus from "../../../components/DataStatus.jsx";
 import DishImage from "../../../components/DishImage.jsx";
 import Pagination from "../../../components/Pagination.jsx";
@@ -25,12 +27,13 @@ export default function DishListPage() {
   const navigate = useNavigate();
   const criteria = readCriteria(searchParams);
   const page = searchParams.get("page") || "1";
+  const { user } = useAuth();
 
   const options = useApiData((signal) => getOptions(signal), []);
   const opts = options.status === "ok" ? options.data : null;
 
   const list = useApiData(
-    (signal) => dishesApi.list({ ...apiQuery(criteria), page, pageSize: PAGE_SIZE }, signal),
+    (signal) => adminDishesApi.list({ ...apiQuery(criteria), page, pageSize: PAGE_SIZE }, signal),
     [criteriaKey(criteria), page]
   );
 
@@ -82,7 +85,9 @@ export default function DishListPage() {
               )}
             </div>
           )}
-          <Link to="/admin/dishes/new" className="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">+ Thêm mới</Link>
+          {canCreateDishUi(user) && (
+            <Link to="/admin/dishes/new" className="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">+ Thêm mới</Link>
+          )}
         </div>
       </div>
 
@@ -122,7 +127,10 @@ export default function DishListPage() {
                     <td className="rt-title px-4 py-3">
                       <Link to={"/admin/dishes/" + d.id} className="flex items-center gap-3 font-semibold hover:text-brand-700">
                         <DishImage src={d.imageUrl} alt="" className="h-11 w-11 rounded-lg object-cover" />
-                        {d.name}
+                        <span className="flex flex-col items-start gap-1">
+                          {d.name}
+                          <DishStatusBadge status={d.status} />
+                        </span>
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-stone-600" data-label="Danh mục">{d.category || "—"}</td>
@@ -143,8 +151,10 @@ export default function DishListPage() {
                       )}
                     </td>
                     <td className="rt-actions whitespace-nowrap px-4 py-3 text-right">
-                      <Link to={`/admin/dishes/${d.id}/edit`} className="rounded-lg px-3 py-1.5 font-medium text-brand-700 hover:bg-brand-50">Sửa</Link>
-                      <Link to={`/admin/dishes/${d.id}/delete`} className="rounded-lg px-3 py-1.5 font-medium text-red-600 hover:bg-red-50">Xóa</Link>
+                      {/* Cờ quyền do API tính (RBAC + ABAC); ẩn nút chỉ là giao diện */}
+                      {d.canEdit && <Link to={`/admin/dishes/${d.id}/edit`} className="rounded-lg px-3 py-1.5 font-medium text-brand-700 hover:bg-brand-50">Sửa</Link>}
+                      {d.canDelete && <Link to={`/admin/dishes/${d.id}/delete`} className="rounded-lg px-3 py-1.5 font-medium text-red-600 hover:bg-red-50">Xóa</Link>}
+                      {!d.canEdit && !d.canDelete && <Link to={`/admin/dishes/${d.id}`} className="rounded-lg px-3 py-1.5 font-medium text-stone-500 hover:bg-stone-50">Xem</Link>}
                     </td>
                   </tr>
                 ))}

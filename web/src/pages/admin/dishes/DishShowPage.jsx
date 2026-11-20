@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
-import { dishesApi } from "../../../api/index.js";
+import { adminDishesApi } from "../../../api/index.js";
+import DishStatusBadge from "./DishStatusBadge.jsx";
 import ChefAvatar from "../../../components/ChefAvatar.jsx";
 import DataStatus from "../../../components/DataStatus.jsx";
 import DishImage from "../../../components/DishImage.jsx";
@@ -13,7 +14,7 @@ const row = "grid gap-1 px-6 py-3 sm:grid-cols-3 sm:gap-4";
 // GET /admin/dishes/:id — chi tiết món ăn (trang đích sau khi thêm / sửa)
 export default function DishShowPage() {
   const { id } = useParams();
-  const state = useApiData((signal) => dishesApi.get(id, signal), [id]);
+  const state = useApiData((signal) => adminDishesApi.get(id, signal), [id]);
   useDocumentTitle(state.status === "ok" ? state.data.name : "Món ăn");
 
   return (
@@ -45,6 +46,7 @@ export default function DishShowPage() {
                   )}
                 </dd>
               </div>
+              <div className={row}><dt className="text-stone-500">Trạng thái đăng</dt><dd className="sm:col-span-2"><DishStatusBadge status={dish.status} /></dd></div>
               <div className={row}><dt className="text-stone-500">Trạng thái</dt><dd className="sm:col-span-2">{dish.available ? "Còn món" : "Hết món"}</dd></div>
               <div className={row}><dt className="text-stone-500">Mô tả</dt><dd className="text-stone-700 sm:col-span-2">{dish.description || "—"}</dd></div>
               <div className={row}><dt className="text-stone-500">URL ảnh</dt><dd className="break-all text-stone-500 sm:col-span-2">{dish.imageUrl || "(dùng ảnh mặc định)"}</dd></div>
@@ -70,10 +72,12 @@ export default function DishShowPage() {
             </div>
 
             <div className="flex flex-wrap gap-3 border-t border-stone-100 px-6 py-4">
-              <Link to={`/admin/dishes/${dish.id}/edit`} className="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Sửa</Link>
-              <Link to={`/admin/dishes/${dish.id}/delete`} className="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700">Xóa</Link>
+              {dish.canEdit && <Link to={`/admin/dishes/${dish.id}/edit`} className="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Sửa</Link>}
+              {dish.canDelete && <Link to={`/admin/dishes/${dish.id}/delete`} className="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700">Xóa</Link>}
               <Link to="/admin/dishes" className="rounded-xl border border-stone-300 px-5 py-2.5 font-semibold hover:bg-stone-100">Quay lại danh sách</Link>
-              <Link to={"/dishes/" + dish.id} className="ml-auto rounded-xl px-5 py-2.5 font-medium text-stone-500 hover:text-brand-700">Xem trang khách →</Link>
+              {dish.status === "published" && (
+                <Link to={"/dishes/" + dish.id} className="ml-auto rounded-xl px-5 py-2.5 font-medium text-stone-500 hover:text-brand-700">Xem trang khách →</Link>
+              )}
             </div>
           </div>
         </div>

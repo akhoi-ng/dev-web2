@@ -14,6 +14,7 @@ export const emptyDishValues = {
   imageUrl: "",
   available: true,
   chefId: "",
+  status: "published",
   ingredients: {},
 };
 
@@ -31,12 +32,14 @@ export function dishToValues(d) {
     imageUrl: d.imageUrl || "",
     available: d.available,
     chefId: d.chefId ? String(d.chefId) : "",
+    status: d.status || "draft",
     ingredients,
   };
 }
 
-// Giá trị form -> body JSON gửi lên API (API vẫn validate lại toàn bộ)
-function toBody(values) {
+// Giá trị form -> body JSON gửi lên API (API vẫn validate lại toàn bộ).
+// Block 10: chỉ Admin gửi chefId / status; Editor có gửi thì API cũng bỏ qua.
+function toBody(values, canAssign) {
   const ingredients = Object.entries(values.ingredients)
     .filter(([, v]) => v.selected)
     .map(([id, v]) => {
@@ -50,13 +53,14 @@ function toBody(values) {
     category: values.category,
     imageUrl: values.imageUrl,
     available: values.available,
-    chefId: values.chefId ? Number(values.chefId) : null,
+    ...(canAssign ? { chefId: values.chefId ? Number(values.chefId) : null, status: values.status } : {}),
     ingredients,
   };
 }
 
 // onSubmit(body) -> Promise<{ data }>; onDone(data) được gọi khi API trả ok: true
-export default function DishForm({ initialValues, categories, chefs, ingredients, submitLabel, cancelHref, onSubmit, onDone }) {
+// canAssign: tài khoản được chọn đầu bếp phụ trách và trạng thái đăng (Admin)
+export default function DishForm({ initialValues, categories, chefs, ingredients, submitLabel, cancelHref, onSubmit, onDone, canAssign = false }) {
   const [values, setValues] = useState(initialValues);
   const { pending, fieldErrors, formError, submit } = useSubmit();
 
@@ -69,7 +73,7 @@ export default function DishForm({ initialValues, categories, chefs, ingredients
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const result = await submit(() => onSubmit(toBody(values)));
+    const result = await submit(() => onSubmit(toBody(values, canAssign)));
     if (result) onDone(result.data);
   }
 
@@ -120,19 +124,35 @@ export default function DishForm({ initialValues, categories, chefs, ingredients
           <FieldError message={fieldErrors.imageUrl} />
         </div>
 
-        <div>
-          <label htmlFor="chefId" className="text-sm font-semibold">Đầu bếp phụ trách</label>
-          <select id="chefId" name="chefId" value={values.chefId} onChange={set("chefId")} className={input + " bg-white"}>
-            <option value="">— Chưa phân công —</option>
-            {chefs.map((c) => (
-              <option key={c.id} value={String(c.id)}>{c.name} · {c.specialty}</option>
-            ))}
-          </select>
-          {chefs.length === 0 && (
-            <p className="mt-1 text-xs text-stone-500">Chưa có đầu bếp. <Link to="/admin/chefs/new" className="text-brand-700 hover:underline">Thêm đầu bếp</Link></p>
-          )}
-          <FieldError message={fieldErrors.chefId} />
-        </div>
+        {canAssign ? (
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label htmlFor="chefId" className="text-sm font-semibold">Đầu bếp phụ trách</label>
+              <select id="chefId" name="chefId" value={values.chefId} onChange={set("chefId")} className={input + " bg-white"}>
+                <option value="">— Chưa phân công —</option>
+                {chefs.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.name} · {c.specialty}</option>
+                ))}
+              </select>
+              {chefs.length === 0 && (
+                <p className="mt-1 text-xs text-stone-500">Chưa có đầu bếp. <Link to="/admin/chefs/new" className="text-brand-700 hover:underline">Thêm đầu bếp</Link></p>
+              )}
+              <FieldError message={fieldErrors.chefId} />
+            </div>
+            <div>
+              <label htmlFor="status" className="text-sm font-semibold">Trạng thái đăng</label>
+              <select id="status" name="status" value={values.status} onChange={set("status")} className={input + " bg-white"}>
+                <option value="draft">Nháp (khách chưa thấy)</option>
+                <option value="published">Đã đăng (hiện trên thực đơn)</option>
+              </select>
+              <FieldError message={fieldErrors.status} />
+            </div>
+          </div>
+        ) : (
+          <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+            Món thuộc đầu bếp bạn phụ trách và ở trạng thái <strong>nháp</strong>. Chỉ quản trị viên đổi đầu bếp phụ trách hoặc đăng món lên thực đơn.
+          </p>
+        )}
 
         <fieldset>
           <legend className="text-sm font-semibold">Công thức (nguyên liệu cho 1 phần ăn)</legend>

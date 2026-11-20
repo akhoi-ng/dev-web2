@@ -24,11 +24,14 @@ import IngredientShowPage from "./pages/admin/ingredients/IngredientShowPage.jsx
 import IngredientEditPage from "./pages/admin/ingredients/IngredientEditPage.jsx";
 import IngredientDeletePage from "./pages/admin/ingredients/IngredientDeletePage.jsx";
 import RequireAuth from "./auth/RequireAuth.jsx";
+import RequireAdmin from "./auth/RequireAdmin.jsx";
 import LoginPage from "./pages/auth/LoginPage.jsx";
 import RegisterPage from "./pages/auth/RegisterPage.jsx";
 import ActivatePage from "./pages/auth/ActivatePage.jsx";
 import ForgotPage from "./pages/auth/ForgotPage.jsx";
 import ResetPage from "./pages/auth/ResetPage.jsx";
+import MfaPage from "./pages/auth/MfaPage.jsx";
+import SecurityPage from "./pages/account/SecurityPage.jsx";
 
 // Route không đường dẫn bọc các trang con để lỗi khi hiển thị trang vẫn giữ header/footer.
 export const router = createBrowserRouter([
@@ -47,6 +50,7 @@ export const router = createBrowserRouter([
           { path: "bookings/new", element: <NewBookingPage /> },
           { path: "bookings/:code", element: <BookingPage /> },
           { path: "login", element: <LoginPage /> },
+          { path: "login/mfa", element: <MfaPage /> },
           { path: "register", element: <RegisterPage /> },
           { path: "activate", element: <ActivatePage /> },
           { path: "forgot", element: <ForgotPage /> },
@@ -55,23 +59,31 @@ export const router = createBrowserRouter([
           {
             element: <RequireAuth />,
             children: [
-              { path: "admin", element: <Navigate to="/admin/dishes" replace /> },
-              { path: "admin/bookings", element: <AdminBookingsPage /> },
-              { path: "admin/dishes", element: <DishListPage /> },
-              { path: "admin/dishes/new", element: <DishNewPage /> },
-              { path: "admin/dishes/:id", element: <DishShowPage /> },
-              { path: "admin/dishes/:id/edit", element: <DishEditPage /> },
-              { path: "admin/dishes/:id/delete", element: <DishDeletePage /> },
-              { path: "admin/chefs", element: <ChefListPage /> },
-              { path: "admin/chefs/new", element: <ChefNewPage /> },
-              { path: "admin/chefs/:id", element: <ChefShowPage /> },
-              { path: "admin/chefs/:id/edit", element: <ChefEditPage /> },
-              { path: "admin/chefs/:id/delete", element: <ChefDeletePage /> },
-              { path: "admin/ingredients", element: <IngredientListPage /> },
-              { path: "admin/ingredients/new", element: <IngredientNewPage /> },
-              { path: "admin/ingredients/:id", element: <IngredientShowPage /> },
-              { path: "admin/ingredients/:id/edit", element: <IngredientEditPage /> },
-              { path: "admin/ingredients/:id/delete", element: <IngredientDeletePage /> },
+              // Mọi tài khoản đã đăng nhập: bật / tắt MFA của mình
+              { path: "account/security", element: <SecurityPage /> },
+              // Block 10: trang quản trị chỉ dành cho Admin (role khác: trang 403; API cũng trả 403)
+              {
+                element: <RequireAdmin />,
+                children: [
+                  { path: "admin", element: <Navigate to="/admin/dishes" replace /> },
+                  { path: "admin/bookings", element: <AdminBookingsPage /> },
+                  { path: "admin/dishes", element: <DishListPage /> },
+                  { path: "admin/dishes/new", element: <DishNewPage /> },
+                  { path: "admin/dishes/:id", element: <DishShowPage /> },
+                  { path: "admin/dishes/:id/edit", element: <DishEditPage /> },
+                  { path: "admin/dishes/:id/delete", element: <DishDeletePage /> },
+                  { path: "admin/chefs", element: <ChefListPage /> },
+                  { path: "admin/chefs/new", element: <ChefNewPage /> },
+                  { path: "admin/chefs/:id", element: <ChefShowPage /> },
+                  { path: "admin/chefs/:id/edit", element: <ChefEditPage /> },
+                  { path: "admin/chefs/:id/delete", element: <ChefDeletePage /> },
+                  { path: "admin/ingredients", element: <IngredientListPage /> },
+                  { path: "admin/ingredients/new", element: <IngredientNewPage /> },
+                  { path: "admin/ingredients/:id", element: <IngredientShowPage /> },
+                  { path: "admin/ingredients/:id/edit", element: <IngredientEditPage /> },
+                  { path: "admin/ingredients/:id/delete", element: <IngredientDeletePage /> },
+                ],
+              },
             ],
           },
           { path: "*", element: <NotFoundPage /> },
