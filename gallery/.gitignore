@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+# .env.production và các file env khác chứa key thật; chỉ commit file mẫu
+.env.*
+!.env.example
+*.log
+# Dữ liệu kiểm thử sinh bằng `npm run fixtures` và thư mục upload khi chạy thử
+server/fixtures/
+server/acceptance-out/
+data/
