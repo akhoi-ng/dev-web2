@@ -87,6 +87,8 @@ const EnvSchema = z
     PROCESSING_CONCURRENCY: int(2, 1),
 
     CLEANUP_INTERVAL_MS: int(10 * 60 * 1000),
+    // Giữ file của version cũ thêm bao lâu sau khi có version mới (trang/CDN còn giữ URL cũ). 0 = dọn ngay
+    VERSION_RETENTION_HOURS: int(24),
     CLEANUP_JOURNAL_PATH: optionalString,
     FAULT_INJECTION: optionalString,
   })
@@ -141,7 +143,7 @@ export interface Config {
     variants: { width: number; quality: number }[];
     concurrency: number;
   };
-  cleanup: { intervalMs: number; journalPath: string };
+  cleanup: { intervalMs: number; journalPath: string; versionRetentionMs: number };
   faults: Set<Fault>;
 }
 
@@ -192,6 +194,7 @@ export function readConfig(source: NodeJS.ProcessEnv = process.env): Config {
     cleanup: {
       intervalMs: e.CLEANUP_INTERVAL_MS,
       journalPath: e.CLEANUP_JOURNAL_PATH ? path.resolve(e.CLEANUP_JOURNAL_PATH) : path.join(SERVER_ROOT, "data", "cleanup-journal.ndjson"),
+      versionRetentionMs: e.VERSION_RETENTION_HOURS * 60 * 60 * 1000,
     },
     faults,
   };

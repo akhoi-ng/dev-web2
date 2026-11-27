@@ -5,6 +5,7 @@ import { HttpError, badRequest, conflict, notFound } from "../errors.js";
 import { parseWith, uuidParam } from "../http.js";
 import { log } from "../log.js";
 import { deletePhotoFiles } from "../photos/cleanup.js";
+import { EditRequestSchema } from "../photos/edit.js";
 import { ListQuerySchema, listAlbums, listPhotos } from "../photos/queries.js";
 import { photoInclude, toPhotoDto } from "../photos/serialize.js";
 import { describeError } from "../storage/timed.js";
@@ -32,7 +33,7 @@ const AlbumSchema = z
   .strict();
 
 export function adminRouter(ctx: AppContext): Router {
-  const { prisma, storages, urls, uploads, cleanup, config } = ctx;
+  const { prisma, storages, urls, uploads, edits, cleanup, config } = ctx;
   const storageChoices = () => ({
     defaultStorage: storages.defaultName,
     storages: storages.info().map((s) => ({ name: s.name, label: s.label, isDefault: s.isDefault })),
@@ -117,6 +118,28 @@ export function adminRouter(ctx: AppContext): Router {
       include: photoInclude,
     });
     res.json(toPhotoDto(updated, urls, { admin: true }));
+  });
+
+  // ── Chỉnh sửa ảnh (bonus): cắt, xoay, lật, khôi phục -> version mới ──
+  /**
+   * Body JSON: { baseVersion, crop: {x,y,width,height} | null, rotate: 0|90|180|270, flipH }
+   *        hoặc { baseVersion, restore: true }
+   * 201: đã công bố version mới; 200: thông số trùng version hiện tại (không tạo version);
+   * 409 VERSION_CONFLICT: có lần lưu khác trước; 422 INVALID_EDIT: thông số sai, ảnh không đổi.
+   */
+  router.post("/photos/:id/edit", async (req, res) => {
+    const id = uuidParam(req.params.id);
+    const body = parseWith(EditRequestSchema, req.body);
+    const result = await edits.edit(id, body);
+    res.status(result.status).json(result);
+  });
+
+  // Bản gốc chuẩn hóa thu nhỏ cho khung xem trước của trình chỉnh sửa
+  router.get("/photos/:id/source", async (req, res) => {
+    const id = uuidParam(req.params.id);
+    const max = Math.min(Math.max(Number(req.query.max) || 1600, 200), 2400);
+    const body = await edits.preview(id, max);
+    res.set({ "Content-Type": "image/webp", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" }).send(body);
   });
 
   /**

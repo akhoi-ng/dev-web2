@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Download, Eye, EyeOff, Pencil, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, Crop, Download, Eye, EyeOff, Pencil, Tag, Trash2 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { api, ApiError, type Photo } from "../lib/api";
 import { formatBytes, formatDateTime, numberFmt, savedPercent } from "../lib/format";
 import { BlurImage } from "../components/BlurImage";
 import { ConfirmDialog } from "../components/Dialog";
 import { EditPhotoDialog } from "../components/EditPhotoDialog";
+import { ImageEditorDialog } from "../components/ImageEditorDialog";
 import { ErrorBox, Spinner, StatusBadge } from "../components/Status";
 import { useDocumentTitle } from "../hooks/usePhotoFeed";
 
@@ -17,6 +18,7 @@ export function PhotoPage() {
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingImage, setEditingImage] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -125,8 +127,27 @@ export function PhotoPage() {
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-4 py-3">
               <dt className="text-muted">Kích thước gốc</dt>
               <dd>
-                {numberFmt.format(photo.width)} × {numberFmt.format(photo.height)} px
+                {numberFmt.format(photo.original.width)} × {numberFmt.format(photo.original.height)} px
               </dd>
+              {photo.version > 1 && (
+                <>
+                  <dt className="text-muted">Đang hiển thị</dt>
+                  <dd>
+                    {numberFmt.format(photo.width)} × {numberFmt.format(photo.height)} px · phiên bản v{photo.version}
+                    {photo.edit && (
+                      <span className="block text-xs text-muted">
+                        {[
+                          photo.edit.crop ? "đã cắt" : null,
+                          photo.edit.rotate ? `xoay ${photo.edit.rotate}°` : null,
+                          photo.edit.flipH ? "lật ngang" : null,
+                        ]
+                          .filter(Boolean)
+                          .join(", ") || "khôi phục bản gốc"}
+                      </span>
+                    )}
+                  </dd>
+                </>
+              )}
               <dt className="text-muted">File tải lên</dt>
               <dd className="break-all">
                 {photo.source.filename} · {photo.source.format.toUpperCase()} · {formatBytes(photo.source.bytes)}
@@ -176,6 +197,9 @@ export function PhotoPage() {
               <button type="button" className="btn-secondary" onClick={() => setEditing(true)}>
                 <Pencil aria-hidden className="size-4" /> Sửa thông tin
               </button>
+              <button type="button" className="btn-secondary" onClick={() => setEditingImage(true)}>
+                <Crop aria-hidden className="size-4" /> Chỉnh sửa ảnh
+              </button>
               <button type="button" className="btn-secondary" onClick={toggleHidden} disabled={busy}>
                 {photo.status === "HIDDEN" ? <Eye aria-hidden className="size-4" /> : <EyeOff aria-hidden className="size-4" />}
                 {photo.status === "HIDDEN" ? "Công bố lại" : "Ẩn khỏi gallery"}
@@ -189,6 +213,7 @@ export function PhotoPage() {
       </div>
 
       <EditPhotoDialog photo={editing ? photo : null} onClose={() => setEditing(false)} onSaved={setPhoto} />
+      <ImageEditorDialog photo={editingImage ? photo : null} onClose={() => setEditingImage(false)} onSaved={setPhoto} />
       <ConfirmDialog
         open={confirmDelete}
         title="Xóa ảnh này?"

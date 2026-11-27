@@ -1,8 +1,9 @@
-import type { Album, Photo, PhotoVariant } from "@prisma/client";
+import type { Album, Photo, PhotoVariant, PhotoVersion } from "@prisma/client";
 import type { StorageRegistry } from "../storage/index.js";
 import { joinUrl } from "../storage/keys.js";
 
-export type PhotoRecord = Photo & { variants: PhotoVariant[]; album: Album | null };
+/** `versions` chỉ chứa version đang công bố (supersededAt = null), xem photoInclude. */
+export type PhotoRecord = Photo & { variants: PhotoVariant[]; album: Album | null; versions: PhotoVersion[] };
 
 export interface UrlBuilder {
   /** URL công khai của một key trong kho `storage` */
@@ -41,6 +42,7 @@ export interface PhotoDto {
   /** Kho đang chứa file của ảnh */
   storage: { name: string; label: string };
   album: { id: string; title: string; slug: string } | null;
+  /** Kích thước ảnh đang công bố (sau chỉnh sửa); bản gốc nằm ở `original` */
   width: number;
   height: number;
   blurDataUrl: string | null;
@@ -51,6 +53,8 @@ export interface PhotoDto {
   original: { width: number; height: number; bytes: number; mime: string; downloadUrl: string; storageKey?: string };
   source: { filename: string; format: string; bytes: number };
   version: number;
+  /** Thông số chỉnh sửa của version đang công bố (chỉ trả cho admin) */
+  edit?: { crop: { x: number; y: number; width: number; height: number } | null; rotate: number; flipH: boolean; editedAt: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -69,6 +73,7 @@ export function toPhotoDto(photo: PhotoRecord, urls: UrlBuilder, opts: { admin?:
     }));
   // src mặc định: variant nhỏ nhất có chiều rộng >= 960, nếu không có thì variant lớn nhất
   const fallback = variants.find((v) => v.width >= 960) ?? variants.at(-1);
+  const current = photo.versions.find((v) => v.version === photo.currentVersion);
   return {
     id: photo.id,
     title: photo.title,
@@ -78,8 +83,8 @@ export function toPhotoDto(photo: PhotoRecord, urls: UrlBuilder, opts: { admin?:
     status: photo.status,
     storage: { name: photo.storage, label: urls.storageLabel(photo.storage) },
     album: photo.album ? { id: photo.album.id, title: photo.album.title, slug: photo.album.slug } : null,
-    width: photo.width,
-    height: photo.height,
+    width: current?.width ?? photo.width,
+    height: current?.height ?? photo.height,
     blurDataUrl: photo.blurDataUrl,
     src: fallback?.url ?? "",
     srcSet: variants.map((v) => `${v.url} ${v.width}w`).join(", "),
@@ -94,9 +99,26 @@ export function toPhotoDto(photo: PhotoRecord, urls: UrlBuilder, opts: { admin?:
     },
     source: { filename: photo.sourceFilename, format: photo.sourceFormat, bytes: photo.sourceBytes },
     version: photo.currentVersion,
+    ...(opts.admin && current
+      ? {
+          edit: {
+            crop:
+              current.cropX !== null && current.cropY !== null && current.cropWidth !== null && current.cropHeight !== null
+                ? { x: current.cropX, y: current.cropY, width: current.cropWidth, height: current.cropHeight }
+                : null,
+            rotate: current.rotate,
+            flipH: current.flipH,
+            editedAt: current.createdAt.toISOString(),
+          },
+        }
+      : {}),
     createdAt: photo.createdAt.toISOString(),
     updatedAt: photo.updatedAt.toISOString(),
   };
 }
 
-export const photoInclude = { variants: true, album: true } as const;
+export const photoInclude = {
+  variants: true,
+  album: true,
+  versions: { where: { supersededAt: null }, take: 1 },
+} as const;

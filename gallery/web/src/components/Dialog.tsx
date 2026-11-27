@@ -9,6 +9,8 @@ interface DialogProps {
   children: ReactNode;
   /** any: bấm ra ngoài hoặc Esc để đóng; closerequest: chỉ Esc */
   closedBy?: "any" | "closerequest";
+  /** md: form thường; xl: khung rộng cho trình chỉnh sửa ảnh */
+  size?: "md" | "xl";
   className?: string;
 }
 
@@ -16,7 +18,7 @@ interface DialogProps {
  * Modal dùng <dialog> gốc mở bằng showModal(): trình duyệt lo focus, top layer, trang phía sau inert,
  * Esc / cử chỉ back và trả focus về nút đã mở. Không thêm role="dialog", aria-modal hay focus trap.
  */
-export function Dialog({ open, onClose, title, titleId, children, closedBy = "closerequest", className = "" }: DialogProps) {
+export function Dialog({ open, onClose, title, titleId, children, closedBy = "closerequest", size = "md", className = "" }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -68,10 +70,10 @@ export function Dialog({ open, onClose, title, titleId, children, closedBy = "cl
       ref={ref}
       aria-labelledby={titleId}
       {...({ closedby: closedBy } as object)}
-      className={`w-[min(100%-2rem,32rem)] rounded-2xl p-0 shadow-2xl ${className}`}
+      className={`${size === "xl" ? "w-[min(100%-2rem,64rem)]" : "w-[min(100%-2rem,32rem)]"} rounded-2xl p-0 shadow-2xl ${className}`}
     >
       {open && (
-        <div className="flex max-h-[85dvh] flex-col">
+        <div className={`flex flex-col ${size === "xl" ? "max-h-[92dvh]" : "max-h-[85dvh]"}`}>
           <header className="flex items-center justify-between gap-4 border-b border-line px-5 py-4">
             <h1 id={titleId} className="text-base font-semibold">
               {title}

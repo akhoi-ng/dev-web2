@@ -37,8 +37,10 @@ export function StorageTab() {
       const r = await api<{ summary: Record<string, number> }>("/api/admin/cleanup", { method: "POST" });
       const s = r.summary;
       setCleanResult(
-        `Đã xóa ${s.keysDeleted ?? 0} key mồ côi, hoàn tất ${s.photosFinalized ?? 0} ảnh đang xóa` +
-          ((s.keysFailed ?? 0) + (s.photosFailed ?? 0) > 0 ? `; còn ${(s.keysFailed ?? 0) + (s.photosFailed ?? 0)} mục lỗi, sẽ thử lại.` : "."),
+        `Đã xóa ${s.keysDeleted ?? 0} key mồ côi, hoàn tất ${s.photosFinalized ?? 0} ảnh đang xóa, dọn ${s.oldVersionsCleaned ?? 0} version cũ đã hết hạn` +
+          ((s.keysFailed ?? 0) + (s.photosFailed ?? 0) + (s.oldVersionsFailed ?? 0) > 0
+            ? `; còn ${(s.keysFailed ?? 0) + (s.photosFailed ?? 0) + (s.oldVersionsFailed ?? 0)} mục lỗi, sẽ thử lại.`
+            : "."),
       );
       load();
     } catch (err) {
@@ -184,11 +186,12 @@ export function StorageTab() {
             Dọn file
           </h2>
           <p className="text-sm text-muted">
-            Khi DB lỗi sau lúc đã ghi file, hoặc kho lỗi lúc xóa ảnh, server giữ danh sách (kho, key) để xóa lại. Tác vụ dọn tự chạy định kỳ; có thể chạy ngay tại đây.
+            Khi DB lỗi sau lúc đã ghi file, hoặc kho lỗi lúc xóa ảnh, server giữ danh sách (kho, key) để xóa lại. File của version cũ (sau khi chỉnh sửa ảnh) được giữ
+            {data.cleanup.versionRetentionHours !== undefined ? ` ${data.cleanup.versionRetentionHours} giờ` : ""} rồi mới xóa. Tác vụ dọn tự chạy định kỳ; có thể chạy ngay tại đây.
           </p>
           <p className="text-sm">
             <strong className="tabular-nums">{data.cleanup.keys}</strong> key mồ côi chờ xóa · <strong className="tabular-nums">{data.cleanup.deletingPhotos}</strong> ảnh đang
-            dọn file
+            dọn file · <strong className="tabular-nums">{data.cleanup.oldVersions ?? 0}</strong> version cũ còn giữ file
           </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-secondary" onClick={runCleanup} disabled={cleaning}>

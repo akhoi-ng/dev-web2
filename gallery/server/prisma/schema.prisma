@@ -71,17 +71,20 @@ model Photo {
   sourceFilename    String         @map("source_filename")
   sourceFormat      String         @map("source_format")
   sourceBytes       Int            @map("source_bytes")
-  // Bản gốc đã chuẩn hóa: pixels đúng hướng, không còn EXIF/GPS. Dùng cho nút tải ảnh gốc và
-  // là điểm xuất phát của phần chỉnh sửa ảnh (bonus) sau này.
   // Tên kho lưu file của ảnh (một tên trong STORAGE_PROFILES, ví dụ "r2", "seaweedfs"). Không phải
   // thông tin xác thực: endpoint và key nằm trong .env.
   storage           String         @default("default")
+  // Bản gốc đã chuẩn hóa: pixels đúng hướng, không còn EXIF/GPS. Dùng cho nút tải ảnh gốc và là
+  // điểm xuất phát của MỌI lần chỉnh sửa (không chỉnh từ variant WebP đã nén).
   originalKey       String         @unique @map("original_key")
   originalMime      String         @map("original_mime")
   originalBytes     Int            @map("original_bytes")
-  // Bộ variant đang công bố (photos/<id>/v<currentVersion>/...). Bonus chỉnh sửa sẽ tạo v2, v3...
+  // Bộ variant đang công bố (photos/<id>/v<currentVersion>/...). Mỗi lần chỉnh sửa tạo v2, v3...
   currentVersion    Int            @default(1) @map("current_version")
-  // Ảnh WebP 16px dạng data URL cho hiệu ứng blur-up (dữ liệu, không phải đường dẫn file)
+  // Số version lớn nhất đã cấp (tăng nguyên tử khi bắt đầu chỉnh sửa): hai lần sửa đồng thời luôn
+  // nhận hai version khác nhau nên không ghi đè file của nhau
+  versionSeq        Int            @default(1) @map("version_seq")
+  // Ảnh WebP 16px dạng data URL cho hiệu ứng blur-up của version đang công bố
   blurDataUrl       String?        @map("blur_data_url")
   uploadedById      String?        @map("uploaded_by_id") @db.Uuid
   uploadedBy        User?          @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
@@ -89,6 +92,7 @@ model Photo {
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   variants          PhotoVariant[]
+  versions          PhotoVersion[]
 
   @@index([status, createdAt(sort: Desc), id(sort: Desc)])
   @@index([albumId])
@@ -111,6 +115,38 @@ model PhotoVariant {
 
   @@unique([photoId, version, width])
   @@map("photo_variants")
+}
+
+// Một lần lưu ảnh (bản upload là v1, mỗi lần chỉnh sửa/khôi phục thêm một version). Ghi thông số
+// chỉnh sửa tính từ BẢN GỐC ĐÃ CHUẨN HÓA: cắt (tọa độ pixel của bản gốc) -> xoay -> lật ngang.
+// Bản ghi chỉ được tạo trong transaction công bố, nên version có supersededAt = null là version đang
+// công bố. Version cũ giữ file thêm VERSION_RETENTION_HOURS rồi tác vụ dọn xóa file và PhotoVariant.
+model PhotoVersion {
+  id             String    @id @default(uuid()) @db.Uuid
+  photoId        String    @map("photo_id") @db.Uuid
+  photo          Photo     @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  version        Int
+  // Kích thước ảnh sau chỉnh sửa (variant lớn nhất không vượt kích thước này)
+  width          Int
+  height         Int
+  blurDataUrl    String?   @map("blur_data_url")
+  // Vùng cắt theo pixel của bản gốc; null = giữ nguyên khung
+  cropX          Int?      @map("crop_x")
+  cropY          Int?      @map("crop_y")
+  cropWidth      Int?      @map("crop_width")
+  cropHeight     Int?      @map("crop_height")
+  // Góc xoay theo chiều kim đồng hồ: 0, 90, 180, 270
+  rotate         Int       @default(0)
+  flipH          Boolean   @default(false) @map("flip_h")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  // Thời điểm có version mới thay thế; null = đang công bố
+  supersededAt   DateTime? @map("superseded_at")
+  // Thời điểm đã xóa xong file của version cũ (giữ bản ghi làm lịch sử)
+  filesCleanedAt DateTime? @map("files_cleaned_at")
+
+  @@unique([photoId, version])
+  @@index([supersededAt])
+  @@map("photo_versions")
 }
 
 // Key đã ghi vào kho nhưng không thuộc Photo nào đã commit (ví dụ DB lỗi sau khi ghi file và xóa bù

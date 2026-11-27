@@ -119,7 +119,12 @@ function InfoPanel({ photo }: { photo: Photo }) {
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
         <dt className="text-white/60">Kích thước gốc</dt>
         <dd>
-          {numberFmt.format(photo.width)} × {numberFmt.format(photo.height)} px
+          {numberFmt.format(photo.original.width)} × {numberFmt.format(photo.original.height)} px
+          {photo.version > 1 && (photo.width !== photo.original.width || photo.height !== photo.original.height) && (
+            <span className="block text-white/60">
+              đang hiển thị {numberFmt.format(photo.width)} × {numberFmt.format(photo.height)} px (v{photo.version})
+            </span>
+          )}
         </dd>
         <dt className="text-white/60">File tải lên</dt>
         <dd>

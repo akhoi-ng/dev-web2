@@ -6,7 +6,7 @@ import { createStorageRegistry } from "../src/storage/index.js";
 
 const prisma = getPrisma();
 const storages = await createStorageRegistry(config);
-const queue = new CleanupQueue(prisma, storages, config.cleanup.journalPath);
+const queue = new CleanupQueue(prisma, storages, config.cleanup.journalPath, config.cleanup.versionRetentionMs);
 
 console.log("Trước khi dọn:", await queue.pendingCount());
 const summary = await queue.run({ deletingOlderThanMs: 0 });

@@ -143,7 +143,8 @@ export function LibraryTab() {
                     </p>
                   </div>
                   <p className="text-xs text-muted">
-                    {p.width}×{p.height} · gốc {formatBytes(p.source.bytes)} · {p.variants.length} variant {formatBytes(total)} · {p.storage.label}
+                    {p.width}×{p.height}
+                    {p.version > 1 ? ` · v${p.version}` : ""} · gốc {formatBytes(p.source.bytes)} · {p.variants.length} variant {formatBytes(total)} · {p.storage.label}
                   </p>
                   {p.status !== "DELETING" && (
                     <div className="mt-auto flex gap-1 pt-1">

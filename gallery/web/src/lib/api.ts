@@ -26,9 +26,28 @@ export interface Photo {
   variants: Variant[];
   original: { width: number; height: number; bytes: number; mime: string; downloadUrl: string; storageKey?: string };
   source: { filename: string; format: string; bytes: number };
+  /** Version đang công bố (1 = bản upload; mỗi lần chỉnh sửa/khôi phục tăng lên) */
   version: number;
+  /** Thông số chỉnh sửa của version đang công bố (chỉ có khi đăng nhập admin) */
+  edit?: PhotoEdit;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PhotoEdit {
+  crop: { x: number; y: number; width: number; height: number } | null;
+  rotate: 0 | 90 | 180 | 270;
+  flipH: boolean;
+  editedAt: string;
+}
+
+export interface EditResult {
+  status: 200 | 201;
+  changed: boolean;
+  version: number;
+  photo: Photo;
+  supersededVersion?: number;
+  oldFilesDeleteAfter?: string;
 }
 
 export interface Page<T> {
@@ -122,7 +141,7 @@ export interface Overview {
   limits: UploadLimits;
   photos: Partial<Record<PhotoStatus, number>>;
   bytes: { source: number; original: number; variants: { width: number; count: number; bytes: number }[] };
-  cleanup: { keys: number; deletingPhotos: number };
+  cleanup: { keys: number; deletingPhotos: number; oldVersions?: number; versionRetentionHours?: number };
 }
 
 export class ApiError extends Error {

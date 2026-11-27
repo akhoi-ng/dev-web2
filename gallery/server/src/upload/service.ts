@@ -108,13 +108,15 @@ interface Deps {
   urls: UrlBuilder;
   upload: Config["upload"];
   faults: Set<Fault>;
+  /** Giới hạn số ảnh xử lý cùng lúc, dùng chung với phần chỉnh sửa ảnh */
+  semaphore?: Semaphore;
 }
 
 export class UploadService {
   private readonly semaphore: Semaphore;
 
   constructor(private readonly deps: Deps) {
-    this.semaphore = new Semaphore(deps.upload.concurrency);
+    this.semaphore = deps.semaphore ?? new Semaphore(deps.upload.concurrency);
   }
 
   get limits(): UploadResponse["limits"] {
@@ -246,6 +248,7 @@ export class UploadService {
               originalMime: normalized.mime,
               originalBytes: normalized.buffer.length,
               currentVersion: version,
+              versionSeq: version,
               blurDataUrl,
               uploadedById,
               variants: {
@@ -258,6 +261,8 @@ export class UploadService {
                   storageKey: variantKey(photoId, version, v.width),
                 })),
               },
+              // v1 = bản upload, chưa chỉnh sửa
+              versions: { create: { version, width: normalized.width, height: normalized.height, blurDataUrl } },
             },
             include: photoInclude,
           });

@@ -39,6 +39,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const CLEAN = process.argv.includes("--clean");
 const OUT_DIR = path.join(SERVER_ROOT, "acceptance-out");
 const MiB = 1024 * 1024;
+const IMMUTABLE = "public, max-age=31536000, immutable";
 
 if (!config.admin) {
   console.error("Cần ADMIN_EMAIL và ADMIN_PASSWORD trong .env");
@@ -400,7 +401,35 @@ async function main() {
   const directMedia = /^https?:\/\//.test(alpha.variants[0]!.url);
   if (directMedia) {
     check("Ảnh ẩn: khách nhận 404 ở API và gallery", hiddenApi.status === 404, hiddenApi.status);
-    skip("Ảnh ẩn: /media trả 404 cho khách, admin xem với Cache-Control private", "ảnh tải thẳng từ bucket công khai (S3_PUBLIC_BASE_URL), web server không chặn được URL đã biết");
+    const proxied = registry.info().find((s) => !s.publicBaseUrl);
+    if (!proxied) {
+      skip("Ảnh ẩn: /media trả 404 cho khách, admin xem với Cache-Control private", "mọi kho đều tải thẳng từ bucket công khai, web server không chặn được URL đã biết");
+    } else {
+      // Kho mặc định là CDN công khai: kiểm việc chặn ảnh ẩn trên kho phục vụ qua /media
+      const up2 = await call("POST", "/api/admin/photos", {
+        form: form([["an-qua-media.png", fx.alphaPng]], { storage: proxied.name, items: JSON.stringify([{ title: "Ảnh ẩn qua /media", altText: "Khối màu cam" }]) }),
+      });
+      const hp = up2.body?.results?.[0]?.photo as PhotoDto | undefined;
+      if (hp) {
+        created.push(hp.id);
+        await call("PATCH", `/api/admin/photos/${hp.id}`, { json: { status: "HIDDEN" } });
+        const anon = await call("GET", hp.variants[0]!.url, { auth: false });
+        const adminView = await call("GET", hp.variants[0]!.url);
+        check(`Ảnh ẩn trong kho "${proxied.name}": /media trả 404 cho khách`, hp.variants[0]!.url.startsWith("/media/") && anon.status === 404, [hp.variants[0]!.url, anon.status]);
+        check(
+          `Ảnh ẩn trong kho "${proxied.name}": admin vẫn xem được, Cache-Control: private, no-store`,
+          adminView.status === 200 && adminView.headers.get("cache-control") === "private, no-store",
+          [adminView.status, adminView.headers.get("cache-control")],
+        );
+        await call("PATCH", `/api/admin/photos/${hp.id}`, { json: { status: "PUBLISHED" } });
+        const pub = await call("GET", hp.variants[0]!.url, { auth: false });
+        check(`Công bố lại trong kho "${proxied.name}": /media trả 200 kèm Cache-Control immutable`, pub.status === 200 && pub.headers.get("cache-control") === IMMUTABLE, [pub.status, pub.headers.get("cache-control")]);
+        const d = await call("DELETE", `/api/admin/photos/${hp.id}`);
+        if (d.status === 200) created.splice(created.indexOf(hp.id), 1);
+      } else {
+        check(`Upload vào kho "${proxied.name}" để kiểm ảnh ẩn`, false, up2.body);
+      }
+    }
   } else {
     const hiddenMedia = await call("GET", alpha.variants[0]!.url, { auth: false });
     const hiddenAdmin = await call("GET", alpha.variants[0]!.url);
@@ -438,6 +467,8 @@ async function main() {
   check("Gallery vẫn trả ảnh sau restart", afterRestartApi.status === 200);
   check("URL media vẫn hoạt động sau restart", afterRestartMedia.status === 200 && afterRestartMedia.headers.get("content-type") === "image/webp");
 
+  await editScenario();
+
   // ── DB lỗi sau khi ghi file ──
   section("DB lỗi sau khi ghi file (FAULT_INJECTION=db-commit)");
   await startServer({ FAULT_INJECTION: "db-commit" });
@@ -450,6 +481,18 @@ async function main() {
   const afterDbFail = await storageKeys();
   check("Đã xóa bù đủ 4 file vừa ghi, kho không còn file", dbFailKeys.length === 4 && dbFailKeys.every((k) => !afterDbFail.has(k)), dbFailResult?.cleanup);
   check("DB không có bản ghi của ảnh đó", dbFailKeys.length > 0 && (await prisma.photo.count({ where: { id: photoIdFromKey(dbFailKeys[0]!) } })) === 0);
+  const editKeysBefore = await storageKeys();
+  const editFail = await call("POST", `/api/admin/photos/${portrait.id}/edit`, { json: { baseVersion: portrait.version, rotate: 90 } });
+  addEvidence("Response khi DB lỗi lúc lưu chỉnh sửa", editFail.body);
+  const editFailDeleted: string[] = editFail.body?.error?.details?.cleanup?.deleted ?? [];
+  check("Lưu chỉnh sửa khi DB lỗi: 500 DB_WRITE_FAILED", editFail.status === 500 && editFail.body?.error?.code === "DB_WRITE_FAILED", editFail.body);
+  check(
+    "File của version mới bị xóa bù, kho không đổi",
+    editFailDeleted.length > 0 && editFailDeleted.every((k) => !k.includes(`/v${portrait.version}/`)) && (await storageKeys()).size === editKeysBefore.size,
+    editFailDeleted,
+  );
+  const portraitAfter = await prisma.photo.findUnique({ where: { id: portrait.id }, select: { currentVersion: true } });
+  check("Ảnh vẫn công bố version cũ", portraitAfter?.currentVersion === portrait.version, portraitAfter);
 
   section("DB lỗi và xóa bù cũng lỗi (FAULT_INJECTION=db-commit,cleanup-delete)");
   await startServer({ FAULT_INJECTION: "db-commit,cleanup-delete" });
@@ -531,6 +574,15 @@ async function main() {
       via: loc ? new URL(loc).host : "proxy",
     });
     addEvidence(`Upload vào kho ${name}`, { storage: p.storage, variants: p.variants.map((v) => v.url), original: p.original.storageKey });
+    const ed = await call("POST", `/api/admin/photos/${p.id}/edit`, { json: { baseVersion: 1, rotate: 90 } });
+    const edKeys: string[] = (ed.body?.photo?.variants ?? []).map((v: { storageKey: string }) => v.storageKey);
+    const afterEdit = await storageKeys(name);
+    check(
+      `Chỉnh sửa ảnh trong kho "${name}": 201, file v2 nằm trong kho đó`,
+      ed.status === 201 && edKeys.length > 0 && edKeys.every((k) => k.includes("/v2/") && afterEdit.has(k)),
+      ed.body?.error ?? edKeys,
+    );
+    if (ed.status === 201) keys.push(...edKeys);
     const del = await call("DELETE", `/api/admin/photos/${p.id}`);
     const afterDel = await storageKeys(name);
     check(`Xóa ảnh dọn sạch file trong kho "${name}"`, del.status === 200 && keys.every((k) => !afterDel.has(k)), del.body);
@@ -538,15 +590,190 @@ async function main() {
   }
 }
 
+// ───────────────────────── bonus: chỉnh sửa ảnh ─────────────────────────
+
+async function editScenario() {
+  section("Bonus: chỉnh sửa ảnh (cắt, xoay, lật, khôi phục, version)");
+  const up = await call("POST", "/api/admin/photos", {
+    form: form([["chinh-sua.jpg", fx.landscape]], { items: JSON.stringify([{ title: "Ảnh để chỉnh sửa", altText: "Ảnh ngang dùng thử chỉnh sửa" }]) }),
+  });
+  const p0 = up.body?.results?.[0]?.photo as PhotoDto | undefined;
+  if (!p0) {
+    check("Upload ảnh để chỉnh sửa", false, up.body);
+    return;
+  }
+  created.push(p0.id);
+  const id = p0.id;
+  const v1Keys = p0.variants.map((v) => v.storageKey);
+
+  const src = await call("GET", `/api/admin/photos/${id}/source?max=800`);
+  const srcMeta = src.status === 200 ? await sharp(src.buffer).metadata() : null;
+  check(
+    "Bản xem trước cho trình chỉnh sửa: WebP thu nhỏ từ bản gốc, Cache-Control private",
+    src.status === 200 && src.headers.get("content-type") === "image/webp" && src.headers.get("cache-control") === "private, no-store" && srcMeta?.width === 800,
+    [src.status, src.headers.get("content-type"), srcMeta?.width],
+  );
+  check("Khách không gọi được API chỉnh sửa (401)", (await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 1, rotate: 90 }, auth: false })).status === 401);
+
+  // Request không hợp lệ: ảnh đang công bố không đổi
+  const keysBefore = await storageKeys();
+  const outside = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 1, crop: { x: 2000, y: 0, width: 600, height: 400 }, rotate: 0, flipH: false } });
+  check("Vùng cắt ra ngoài ảnh: 422 INVALID_EDIT", outside.status === 422 && outside.body?.error?.code === "INVALID_EDIT", outside.body);
+  addEvidence("Response khi vùng cắt nằm ngoài ảnh", outside.body);
+  const badAngle = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 1, rotate: 45 } });
+  check("Góc xoay 45°: 422 INVALID_EDIT", badAngle.status === 422 && badAngle.body?.error?.code === "INVALID_EDIT", badAngle.body);
+  const badFlip = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 1, flipH: "yes" } });
+  check("flipH không phải boolean: 400", badFlip.status === 400, badFlip.body);
+  const stale = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 7, rotate: 90 } });
+  check("baseVersion cũ: 409 VERSION_CONFLICT", stale.status === 409 && stale.body?.error?.code === "VERSION_CONFLICT", stale.body);
+  const unchanged = await prisma.photo.findUnique({ where: { id }, select: { currentVersion: true } });
+  check("Request sai không đổi ảnh đang công bố, không ghi file", unchanged?.currentVersion === 1 && (await storageKeys()).size === keysBefore.size);
+
+  // Lưu hợp lệ: cắt 1200x900 tại (400,200) -> xoay 90 -> lật ngang
+  const crop = { x: 400, y: 200, width: 1200, height: 900 };
+  const e2 = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 1, crop, rotate: 90, flipH: true } });
+  addEvidence("Response lưu chỉnh sửa (v1 -> v2)", {
+    status: e2.status,
+    version: e2.body?.version,
+    oldFilesDeleteAfter: e2.body?.oldFilesDeleteAfter,
+    edit: e2.body?.photo?.edit,
+    variants: e2.body?.photo?.variants?.map((v: { width: number; height: number; storageKey: string }) => `${v.width}x${v.height} ${v.storageKey}`),
+  });
+  const p2 = e2.body?.photo as PhotoDto | undefined;
+  check("Lưu chỉnh sửa: 201, version 2", e2.status === 201 && e2.body?.version === 2 && p2?.version === 2, e2.body?.error ?? e2.body?.version);
+  if (!p2) return;
+  check("Kích thước sau cắt và xoay 90°: 900x1200", p2.width === 900 && p2.height === 1200, [p2.width, p2.height]);
+  check(
+    "Variant mới nằm dưới photos/<id>/v2/, không phóng lớn (320, 900)",
+    p2.variants.every((v) => v.storageKey.startsWith(`photos/${id}/v2/`)) && p2.variants.map((v) => v.width).join() === "320,900",
+    p2.variants.map((v) => v.storageKey),
+  );
+  check("Bản gốc không đổi (2400x1600, cùng key)", p2.original.storageKey === p0.original.storageKey && p2.original.width === 2400 && p2.original.height === 1600);
+  const after2 = await storageKeys();
+  check("File v1 vẫn còn trong kho (browser/CDN có thể còn cache URL cũ)", v1Keys.every((k) => after2.has(k)));
+  const big = await call("GET", p2.variants.at(-1)!.url, { auth: false });
+  const bigMeta = await sharp(big.buffer).metadata();
+  check(
+    "Variant v2 là WebP 900x1200, không EXIF, Cache-Control immutable",
+    big.status === 200 && bigMeta.format === "webp" && bigMeta.width === 900 && bigMeta.height === 1200 && !bigMeta.exif && big.headers.get("cache-control") === IMMUTABLE,
+    [big.status, bigMeta.width, bigMeta.height, big.headers.get("cache-control")],
+  );
+  // Tham chiếu độc lập: cắt, lật rồi xoay 270 (= xoay 90 rồi lật) bằng sharp trên file gửi lên
+  // (không resize trong cùng pipeline: sharp resize trước khi xoay; ảnh đã đúng 900px)
+  const expected = await sharp(fx.landscape).extract({ left: crop.x, top: crop.y, width: crop.width, height: crop.height }).flop().rotate(270).removeAlpha().raw().toBuffer();
+  const actual = await sharp(big.buffer).removeAlpha().raw().toBuffer();
+  const diff = meanAbsDiff(expected, actual);
+  check("Nội dung variant khớp phép cắt -> xoay -> lật tính từ bản gốc (sai khác trung bình < 6/255)", diff < 6, Math.round(diff * 10) / 10);
+  const pub = await call("GET", `/api/photos/${id}`, { auth: false });
+  check("Gallery công khai trả srcset của v2", pub.status === 200 && pub.body.version === 2 && pub.body.srcSet.includes("/v2/") && !pub.body.srcSet.includes("/v1/"), pub.body?.srcSet);
+  const versions = await prisma.photoVersion.findMany({ where: { photoId: id }, orderBy: { version: "asc" } });
+  check(
+    "DB: PhotoVersion v1 bị thay thế (superseded_at), v2 đang công bố kèm thông số",
+    versions.length === 2 && versions[0]!.supersededAt !== null && versions[1]!.supersededAt === null && versions[1]!.cropX === 400 && versions[1]!.rotate === 90 && versions[1]!.flipH,
+    versions.map((v) => ({ v: v.version, superseded: v.supersededAt, crop: [v.cropX, v.cropY, v.cropWidth, v.cropHeight], rotate: v.rotate, flipH: v.flipH })),
+  );
+
+  const same = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 2, crop, rotate: 90, flipH: true } });
+  check("Gửi lại đúng thông số đang công bố: 200, không tạo version", same.status === 200 && same.body?.changed === false && same.body?.version === 2, same.body?.version);
+
+  // Hai lần lưu đồng thời từ cùng v2: đúng một lần thắng, file của lần thua bị xóa bù
+  const keysBeforeRace = await storageKeys();
+  const [ra, rb] = await Promise.all([
+    call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 2, rotate: 180 } }),
+    call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: 2, rotate: 0, flipH: true } }),
+  ]);
+  const statuses = [ra.status, rb.status].sort().join();
+  check("Hai lần lưu đồng thời từ cùng version: một 201, một 409", statuses === "201,409", [ra.status, rb.status, ra.body?.error ?? rb.body?.error]);
+  const winner = (ra.status === 201 ? ra : rb).body?.photo as PhotoDto | undefined;
+  const afterRace = await storageKeys();
+  const raceNew = [...afterRace].filter((k) => !keysBeforeRace.has(k));
+  check(
+    "Kho chỉ thêm file của lần thắng",
+    winner !== undefined && raceNew.length === winner.variants.length && raceNew.every((k) => k.startsWith(`photos/${id}/v${winner.version}/`)),
+    { winnerVersion: winner?.version, raceNew },
+  );
+  addEvidence("Hai lần lưu đồng thời", { statuses: [ra.status, rb.status], loser: (ra.status === 409 ? ra : rb).body });
+
+  // Khôi phục: bỏ mọi chỉnh sửa, sinh lại variant từ bản gốc
+  const cur = winner?.version ?? 2;
+  const rs = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: cur, restore: true, rotate: 90, crop } });
+  const pr = rs.body?.photo as PhotoDto | undefined;
+  check(
+    "Khôi phục (bỏ qua crop/rotate gửi kèm): 201, ảnh 2400x1600, variant 320/960/1600",
+    rs.status === 201 &&
+      pr?.width === 2400 &&
+      pr.height === 1600 &&
+      pr.variants.map((v) => v.width).join() === "320,960,1600" &&
+      pr.variants.every((v) => v.storageKey.includes(`/v${pr.version}/`)) &&
+      pr.version > cur,
+    rs.body?.error ?? [pr?.width, pr?.height, pr?.variants?.map((v) => v.storageKey)],
+  );
+  if (!pr) return;
+  const restoredDb = await prisma.photoVersion.findFirst({ where: { photoId: id, supersededAt: null } });
+  check("DB: version khôi phục không có thông số chỉnh sửa", restoredDb?.version === pr.version && restoredDb.cropX === null && restoredDb.rotate === 0 && !restoredDb.flipH, restoredDb);
+  const oldKeys = (await prisma.photoVariant.findMany({ where: { photoId: id, version: { not: pr.version } } })).map((v) => v.storageKey);
+  const beforeClean = await storageKeys();
+  check("Trong thời hạn giữ: còn file và PhotoVariant của các version cũ", oldKeys.length > 0 && oldKeys.every((k) => beforeClean.has(k)), oldKeys.length);
+
+  // Hết thời hạn giữ (VERSION_RETENTION_HOURS=0): tác vụ dọn xóa file + PhotoVariant của version cũ
+  section("Bonus: dọn version cũ khi hết thời hạn giữ (VERSION_RETENTION_HOURS=0)");
+  await startServer({ VERSION_RETENTION_HOURS: "0" });
+  await login();
+  const run = await call("POST", "/api/admin/cleanup");
+  addEvidence("Kết quả dọn version cũ", run.body);
+  const afterClean = await storageKeys();
+  check("Tác vụ dọn báo đã dọn version cũ", (run.body?.summary?.oldVersionsCleaned ?? 0) >= 1, run.body?.summary);
+  check("Kho không còn file của version cũ", oldKeys.every((k) => !afterClean.has(k)), oldKeys.filter((k) => afterClean.has(k)));
+  check("Kho vẫn còn đủ file của version đang công bố và bản gốc", keysOf(pr).every((k) => afterClean.has(k)));
+  const leftVariants = await prisma.photoVariant.findMany({ where: { photoId: id } });
+  const oldRows = await prisma.photoVersion.findMany({ where: { photoId: id, supersededAt: { not: null } } });
+  check(
+    "DB: chỉ còn PhotoVariant của version đang công bố; PhotoVersion cũ có files_cleaned_at",
+    leftVariants.every((v) => v.version === pr.version) && oldRows.length >= 2 && oldRows.every((r) => r.filesCleanedAt !== null),
+    { variants: leftVariants.map((v) => v.version), old: oldRows.map((r) => [r.version, r.filesCleanedAt]) },
+  );
+  const gone = await call("GET", `/media/${oldKeys[0]}`, { auth: false });
+  check("URL /media của version cũ trả 404 khi gửi request mới tới origin", gone.status === 404, gone.status);
+
+  // Xóa ảnh có nhiều version: dọn sạch mọi file
+  const e5 = await call("POST", `/api/admin/photos/${id}/edit`, { json: { baseVersion: pr.version, rotate: 270 } });
+  const p5 = e5.body?.photo as PhotoDto | undefined;
+  const allKeys = (await prisma.photoVariant.findMany({ where: { photoId: id } })).map((v) => v.storageKey).concat(p0.original.storageKey);
+  const del = await call("DELETE", `/api/admin/photos/${id}`);
+  const afterDel = await storageKeys();
+  check(
+    "Xóa ảnh đã chỉnh sửa: xóa file mọi version còn giữ và bản gốc, DB không còn bản ghi",
+    p5 !== undefined &&
+      del.status === 200 &&
+      allKeys.length > keysOf(p5).length - 1 &&
+      allKeys.every((k) => !afterDel.has(k)) &&
+      (await prisma.photo.count({ where: { id } })) === 0 &&
+      (await prisma.photoVersion.count({ where: { photoId: id } })) === 0,
+    { del: del.body, keys: allKeys.length },
+  );
+  if (del.status === 200) created.splice(created.indexOf(id), 1);
+
+  await startServer();
+  await login();
+}
+
+function meanAbsDiff(a: Buffer, b: Buffer): number {
+  if (a.length !== b.length) return 255;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i]! - b[i]!);
+  return sum / a.length;
+}
+
 interface PhotoDto {
   id: string;
+  version: number;
   width: number;
   height: number;
   altText: string;
   srcSet: string;
   storage: { name: string; label: string };
   variants: { width: number; height: number; bytes: number; url: string; storageKey: string }[];
-  original: { storageKey: string; downloadUrl: string; bytes: number };
+  original: { storageKey: string; downloadUrl: string; bytes: number; width: number; height: number };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
