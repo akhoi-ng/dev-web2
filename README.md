@@ -6,7 +6,9 @@ kiểm tra chữ ký file và giới hạn, xoay theo EXIF rồi bỏ EXIF, sinh
 trong lưới masonry, lightbox và trang chi tiết. Bonus: cắt, xoay, lật, khôi phục ảnh theo version.
 
 Toàn bộ code, hướng dẫn chạy và đối chiếu với đề nằm trong [`gallery/`](gallery/), xem
-[`gallery/README.md`](gallery/README.md).
+[`gallery/README.md`](gallery/README.md). Trước khi chạy bản nộp, xem "Ghi chú khi chạy bản nộp" ở mục
+3 của README đó: cần chỉnh đường dẫn `LOCAL_ROOT` và database trong `gallery/server/.env.production`
+cho đúng máy chạy server.
 
 ## Thông tin nhóm
 

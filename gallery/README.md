@@ -120,6 +120,21 @@ phía trước và cho body tới 56 MB (`client_max_body_size 56m;` với nginx
 `http://localhost:4000` khi chạy trên máy: browser chấp nhận cookie `Secure` trên `localhost` nhưng
 không chấp nhận trên `http://<IP>`.
 
+> **Ghi chú khi chạy bản nộp.** Bản nộp kèm sẵn `server/.env.production` (key của các kho, tài khoản
+> admin `ADMIN_EMAIL` / `ADMIN_PASSWORD`). Một vài giá trị đang theo máy của nhóm, thầy chỉnh lại
+> trong file này trước khi chạy:
+>
+> - **Kho ổ đĩa server:** đổi `LOCAL_ROOT=D:\gallery-data\uploads` thành một đường dẫn tuyệt đối có
+>   trên máy chạy server, nằm ngoài thư mục source (ví dụ `C:\gallery-data\uploads` hoặc
+>   `/home/<user>/gallery-data/uploads`). Muốn ảnh mặc định lưu trên ổ đĩa của server thay vì R2 thì
+>   đặt thêm `STORAGE_DEFAULT=local`. Không dùng kho này thì bỏ `local` khỏi `STORAGE_PROFILES`.
+> - **Database:** `DATABASE_URL` / `DIRECT_URL` trỏ tới PostgreSQL cục bộ `localhost:55432`. Chạy
+>   `npm run db:local` trong một terminal riêng (trong `server/`) trước `db:migrate:prod`. Trên Windows
+>   dữ liệu mặc định nằm ở `D:\gallery-data\postgres`; máy không có ổ D: thì đặt biến môi trường
+>   trước khi chạy, ví dụ PowerShell `$env:DB_LOCAL_DIR="C:\gallery-data\postgres"`. Dùng PostgreSQL có
+>   sẵn thì sửa hai biến này sang server đó (giữ `?schema=gallery`).
+> - Kho `r2` và `seaweedfs` là bucket thật của nhóm: ảnh upload vào đó dùng chung với nhóm.
+
 Supabase: `DATABASE_URL` dùng pooler Transaction (cổng 6543) kèm `&pgbouncer=true&schema=gallery`;
 `DIRECT_URL` dùng Session/Direct (cổng 5432) kèm `?schema=gallery` để chạy migrate.
 
